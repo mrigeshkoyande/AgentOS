@@ -32,3 +32,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+# Virtual environments
+venv/
+env/
+.venv/
