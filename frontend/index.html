@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentOS — AI Organization Operating System</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    /* ── Landing-specific styles ── */
+    body { overflow: hidden; }
+
+    /* Background network canvas */
+    #bg-canvas {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      z-index: 0;
+    }
+
+    .page { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── Hero Layout ── */
+    .hero {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 80px;
+      padding: 0 80px;
+    }
+
+    .hero-left { flex: 1; max-width: 520px; }
+    .hero-right { flex: 1; max-width: 540px; }
+
+    /* Eyebrow pill */
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      background: rgba(108,99,255,0.1);
+      border: 1px solid rgba(108,99,255,0.22);
+      border-radius: 100px;
+      font-size: 12px; font-weight: 600; color: var(--primary);
+      margin-bottom: 24px;
+    }
+    .eyebrow-dot {
+      width: 6px; height: 6px;
+      background: var(--primary); border-radius: 50%;
+      animation: pulse-dot 1.6s ease-in-out infinite;
+    }
+
+    h1 { margin-bottom: 16px; }
+    .hero-sub {
+      font-size: 16px; line-height: 1.7;
+      color: var(--text-2);
+      margin-bottom: 36px;
+    }
+
+    .cta-row { display: flex; gap: 12px; align-items: center; margin-bottom: 48px; }
+
+    /* Stats row */
+    .stats-row { display: flex; gap: 32px; }
+    .stat-item { display: flex; flex-direction: column; gap: 2px; }
+    .stat-num  { font-size: 20px; font-weight: 800; }
+    .stat-lbl  { font-size: 11px; color: var(--text-3); }
+
+    /* ── Prompt Composer ── */
+    .composer {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 4px;
+      box-shadow: 0 0 0 1px rgba(108,99,255,0.08), 0 24px 64px rgba(0,0,0,0.5);
+      transition: all 0.3s;
+    }
+    .composer:focus-within {
+      border-color: rgba(108,99,255,0.4);
+      box-shadow: 0 0 0 4px rgba(108,99,255,0.1), 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .composer-textarea {
+      width: 100%; min-height: 130px;
+      background: transparent; border: none; outline: none;
+      padding: 20px 22px 10px;
+      font-size: 15px; line-height: 1.65;
+      color: var(--text); resize: none;
+    }
+    .composer-textarea::placeholder { color: var(--text-4); }
+    .composer-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px 12px;
+    }
+    .composer-hint { font-size: 11px; color: var(--text-4); }
+    #char-count { font-size: 11px; color: var(--text-4); }
+
+    /* ── Suggestions ── */
+    .suggestions { margin-top: 18px; }
+    .sug-label {
+      font-size: 10px; font-weight: 600;
+      color: var(--text-4); letter-spacing: 0.08em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .sug-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+
+    /* ── Session Loader ── */
+    .session-loader {
+      display: flex; gap: 8px;
+      padding: 14px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      align-items: center;
+    }
+    .session-loader .input { max-width: 320px; }
+    .session-loader span { font-size: 12px; color: var(--text-3); }
+
+    /* error */
+    .error-msg {
+      display: none; color: var(--error);
+      font-size: 12px; margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="page">
+    <!-- Topbar -->
+    <nav class="topbar">
+      <div class="topbar-logo">
+        <div class="logo-icon">A</div>
+        AgentOS
+      </div>
+      <nav class="topbar-nav">
+        <a href="index.html" class="active">Home</a>
+        <a href="session.html">Session</a>
+        <a href="results.html">Results</a>
+      </nav>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="openLoadModal()">Load Session</button>
+        <button class="btn btn-primary btn-sm" id="topbar-generate" onclick="submitForm()">Generate Org</button>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <main class="hero">
+      <div class="hero-left">
+        <div class="eyebrow">
+          <span class="eyebrow-dot"></span>
+          AI Organization Platform · v1.0 MVP
+        </div>
+
+        <h1>Build an <span class="grad">AI Organization</span><br>in Minutes</h1>
+
+        <p class="hero-sub">
+          Describe a goal in plain English. AgentOS creates a full team of
+          specialized AI agents — CEO, CTO, CFO, Legal, Marketing — that
+          collaborate and execute in real time.
+        </p>
+
+        <div class="cta-row">
+          <button class="btn btn-primary btn-lg" onclick="submitForm()" id="main-cta">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Generate Organization
+          </button>
+          <button class="btn btn-secondary" onclick="openLoadModal()">Load Session</button>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-item">
+            <span class="stat-num grad">5 min</span>
+            <span class="stat-lbl">Time to first result</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num grad">7+</span>
+            <span class="stat-lbl">Agents auto-generated</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num grad">4+</span>
+            <span class="stat-lbl">AI models supported</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-right">
+        <!-- Prompt Composer -->
+        <div class="composer">
+          <textarea
+            class="composer-textarea"
+            id="org-description"
+            placeholder="Build a SaaS startup for healthcare professionals focused on telemedicine and AI diagnostics..."
+            maxlength="1000"
+            oninput="updateCharCount()"
+            onkeydown="handleKey(event)"
+          ></textarea>
+          <div class="composer-footer">
+            <span class="composer-hint">⌘ Enter to generate</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span id="char-count">0 / 1000</span>
+              <button class="btn btn-primary btn-sm" onclick="submitForm()" id="composer-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+        <p class="error-msg" id="error-msg">Please enter a description of at least 20 characters.</p>
+
+        <!-- Suggested Prompts -->
+        <div class="suggestions">
+          <div class="sug-label">Try a suggestion</div>
+          <div class="sug-chips">
+            <span class="chip" onclick="fillPrompt(this)">🚀 Launch a fintech startup</span>
+            <span class="chip" onclick="fillPrompt(this)">🏥 Healthcare SaaS platform</span>
+            <span class="chip" onclick="fillPrompt(this)">📣 Build a marketing agency</span>
+            <span class="chip" onclick="fillPrompt(this)">🤖 AI-powered CRM product</span>
+            <span class="chip" onclick="fillPrompt(this)">🌍 Global product launch plan</span>
+            <span class="chip" onclick="fillPrompt(this)">⚖️ LegalTech startup strategy</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Session Loader bar -->
+    <div class="session-loader">
+      <span>Have a session ID?</span>
+      <input class="input" id="session-id-input" placeholder="sess_abc123..." style="max-width:260px" />
+      <button class="btn btn-secondary btn-sm" onclick="loadSession()">Load →</button>
+    </div>
+  </div>
+
+  <!-- Load Session Modal -->
+  <div class="overlay" id="load-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Load Existing Session</span>
+        <button class="btn-icon" onclick="closeLoadModal()">✕</button>
+      </div>
+      <div class="input-group" style="margin-bottom:16px">
+        <label class="input-label">Session ID</label>
+        <input class="input" id="modal-session-id" placeholder="sess_abc123..." />
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeLoadModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="loadSessionFromModal()">Load Session →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="toasts" id="toasts"></div>
+
+  <script src="js/api.js"></script>
+  <script>
+    /* ── Background network animation ── */
+    (function () {
+      const canvas = document.getElementById('bg-canvas');
+      const ctx = canvas.getContext('2d');
+      let W, H, nodes;
+
+      function resize() {
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+      }
+      function init() {
+        resize();
+        nodes = Array.from({ length: 22 }, () => ({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.22,
+          vy: (Math.random() - 0.5) * 0.22,
+        }));
+      }
+      function draw() {
+        ctx.clearRect(0, 0, W, H);
+        nodes.forEach(n => {
+          n.x += n.vx; n.y += n.vy;
+          if (n.x < 0 || n.x > W) n.vx *= -1;
+          if (n.y < 0 || n.y > H) n.vy *= -1;
+        });
+        nodes.forEach((a, i) => {
+          nodes.slice(i + 1).forEach(b => {
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            if (d < 160) {
+              ctx.beginPath();
+              ctx.strokeStyle = `rgba(108,99,255,${0.28 * (1 - d / 160)})`;
+              ctx.lineWidth = 0.7;
+              ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+              ctx.stroke();
+            }
+          });
+          ctx.beginPath();
+          ctx.fillStyle = 'rgba(108,99,255,0.55)';
+          ctx.arc(a.x, a.y, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        requestAnimationFrame(draw);
+      }
+      window.addEventListener('resize', resize);
+      init(); draw();
+    })();
+
+    /* ── Composer ── */
+    function updateCharCount() {
+      const t = document.getElementById('org-description').value;
+      document.getElementById('char-count').textContent = `${t.length} / 1000`;
+    }
+
+    function fillPrompt(chip) {
+      const text = chip.textContent.replace(/^[^\s]+\s/, ''); // strip emoji
+      const ta = document.getElementById('org-description');
+      ta.value = `Build a complete business plan and organization for: ${text}`;
+      ta.focus();
+      updateCharCount();
+    }
+
+    function handleKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        submitForm();
+      }
+    }
+
+    /* ── Submit ── */
+    async function submitForm() {
+      const desc = document.getElementById('org-description').value.trim();
+      const errEl = document.getElementById('error-msg');
+
+      if (desc.length < 20) {
+        errEl.style.display = 'block';
+        return;
+      }
+      errEl.style.display = 'none';
+
+      const btn = document.getElementById('main-cta');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%"></span> Creating…';
+
+      try {
+        const session = await API.createSession(desc);
+        showToast('Organization created! Starting agents…', 'success');
+        setTimeout(() => {
+          window.location.href = `session.html?id=${session.session_id}`;
+        }, 600);
+      } catch (err) {
+        showToast(err.message || 'Failed to create session. Is the backend running?', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generate Organization';
+      }
+    }
+
+    /* ── Load Session ── */
+    function openLoadModal()  { document.getElementById('load-modal').classList.add('open'); }
+    function closeLoadModal() { document.getElementById('load-modal').classList.remove('open'); }
+
+    function loadSession() {
+      const id = document.getElementById('session-id-input').value.trim();
+      if (!id) return;
+      window.location.href = `session.html?id=${id}`;
+    }
+    function loadSessionFromModal() {
+      const id = document.getElementById('modal-session-id').value.trim();
+      if (!id) return;
+      window.location.href = `session.html?id=${id}`;
+    }
+
+    /* ── Toast ── */
+    function showToast(msg, type = 'info') {
+      const wrap = document.getElementById('toasts');
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+      wrap.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+  </script>
+</body>
+</html>

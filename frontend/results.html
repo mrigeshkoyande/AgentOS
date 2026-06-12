@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentOS — Results</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    .layout { flex: 1; display: flex; overflow: hidden; }
+
+    /* ── Left nav ── */
+    .sidenav {
+      width: 200px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 16px 10px;
+    }
+    .sidenav-section { font-size: 10px; font-weight: 600; color: var(--text-4); letter-spacing: .08em; text-transform: uppercase; padding: 10px 8px 5px; }
+    .sidenav-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 8px;
+      font-size: 12px; font-weight: 500; color: var(--text-2);
+      cursor: pointer; transition: all .15s; margin-bottom: 1px;
+    }
+    .sidenav-item:hover  { background: rgba(255,255,255,.04); color: var(--text); }
+    .sidenav-item.active { background: var(--primary-dim); color: var(--primary); }
+    .sidenav-footer {
+      margin-top: auto; padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Main content ── */
+    .main { flex: 1; overflow-y: auto; padding: 32px 40px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.07) transparent; }
+
+    .results-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+    .results-title   { font-size: 22px; font-weight: 700; }
+    .results-meta    { font-size: 11px; color: var(--text-3); margin-bottom: 28px; display: flex; align-items: center; gap: 10px; }
+    .meta-sep        { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.2); }
+
+    /* ── Section ── */
+    .section        { margin-bottom: 32px; }
+    .section-title  { font-size: 13px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; color: rgba(255,255,255,.85); }
+
+    /* ── Executive summary card ── */
+    .exec-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
+    .exec-desc { font-size: 13px; line-height: 1.75; color: var(--text-2); margin-bottom: 20px; }
+    .metrics   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .metric    { background: rgba(255,255,255,.03); border-radius: 10px; padding: 16px; text-align: center; }
+    .metric-n  { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+    .metric-l  { font-size: 10px; color: var(--text-3); margin-top: 4px; }
+
+    /* ── Agent output card ── */
+    .agent-out-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+    .aoc-header     { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .aoc-avatar     { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .aoc-name       { font-size: 12px; font-weight: 600; }
+    .aoc-role       { font-size: 10px; color: var(--text-3); }
+    .aoc-body       { font-size: 12px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+    .aoc-expand     { font-size: 11px; color: var(--primary); cursor: pointer; margin-top: 8px; display: inline-block; }
+
+    /* ── Download buttons ── */
+    .dl-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* skeleton */
+    .skel-line { height: 14px; border-radius: 6px; margin-bottom: 10px; }
+    .skel-para { height: 80px; border-radius: 10px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <!-- Topbar -->
+  <nav class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">A</div>
+      AgentOS
+    </div>
+    <nav class="topbar-nav">
+      <a href="index.html">Home</a>
+      <a href="session.html" id="back-session">Session</a>
+      <a href="results.html" class="active">Results</a>
+    </nav>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="copyShareLink()">↗ Share</button>
+      <button class="btn btn-primary btn-sm" onclick="API.exportResults(SESSION_ID,'json')">↓ Download</button>
+    </div>
+  </nav>
+
+  <div class="layout">
+    <!-- Side nav -->
+    <nav class="sidenav">
+      <div class="sidenav-section">Report</div>
+      <div class="sidenav-item active" onclick="scrollTo('#sec-summary',this)">◈ Executive Summary</div>
+      <div class="sidenav-item" onclick="scrollTo('#sec-agents',this)">◫ Agent Outputs</div>
+      <div class="sidenav-item" onclick="scrollTo('#sec-synthesis',this)">⬡ Final Synthesis</div>
+      <div class="sidenav-item" onclick="scrollTo('#sec-recs',this)">→ Recommendations</div>
+
+      <div class="sidenav-section">Export</div>
+      <div class="sidenav-item" style="color:var(--primary)" onclick="API.exportResults(SESSION_ID,'json')">↓ JSON</div>
+      <div class="sidenav-item" onclick="API.exportResults(SESSION_ID,'md')">↓ Markdown</div>
+
+      <div class="sidenav-footer">
+        <button class="btn btn-secondary w-full btn-sm" onclick="goBack()">← Back to Session</button>
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="main" id="main-content">
+      <!-- Loading skeleton -->
+      <div id="skeleton">
+        <div style="height:28px;width:60%" class="skeleton skel-line"></div>
+        <div style="height:12px;width:40%;margin-bottom:28px" class="skeleton skel-line"></div>
+        <div class="skeleton skel-para"></div>
+        <div class="skeleton skel-para"></div>
+        <div class="skeleton skel-para"></div>
+      </div>
+
+      <!-- Actual content (hidden until loaded) -->
+      <div id="results-content" style="display:none">
+
+        <div class="results-heading">
+          <div>
+            <div class="results-title" id="results-title">Loading…</div>
+            <div class="results-meta" id="results-meta"></div>
+          </div>
+          <span class="badge badge-done" id="results-status">✓ Complete</span>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="section" id="sec-summary">
+          <div class="section-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C63FF" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Executive Summary
+          </div>
+          <div class="exec-card">
+            <div class="exec-desc" id="exec-desc">Analyzing results…</div>
+            <div class="metrics" id="exec-metrics"></div>
+          </div>
+        </div>
+
+        <!-- Agent Outputs -->
+        <div class="section" id="sec-agents">
+          <div class="section-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00D4FF" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0112 0v2"/></svg>
+            Agent Outputs
+          </div>
+          <div id="agent-outputs"></div>
+        </div>
+
+        <!-- Final Synthesis -->
+        <div class="section" id="sec-synthesis">
+          <div class="section-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Final Synthesis
+          </div>
+          <div class="exec-card">
+            <div class="exec-desc" id="synthesis-text">—</div>
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="section" id="sec-recs">
+          <div class="section-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFB300" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Recommendations
+          </div>
+          <div id="recommendations"></div>
+        </div>
+
+        <!-- Export -->
+        <div class="section">
+          <div class="section-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </div>
+          <div class="dl-row">
+            <button class="btn btn-primary" onclick="API.exportResults(SESSION_ID,'json')">↓ Download JSON</button>
+            <button class="btn btn-secondary" onclick="API.exportResults(SESSION_ID,'md')">↓ Markdown</button>
+            <button class="btn btn-secondary" onclick="copyShareLink()">↗ Share Link</button>
+            <button class="btn btn-secondary" onclick="window.print()">Print / PDF</button>
+          </div>
+        </div>
+
+      </div><!-- /results-content -->
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="js/api.js"></script>
+  <script>
+    const params     = new URLSearchParams(window.location.search);
+    const SESSION_ID = params.get('id') || '';
+
+    if (!SESSION_ID) window.location.href = 'index.html';
+
+    // Wire back-to-session link
+    document.getElementById('back-session').href = `session.html?id=${SESSION_ID}`;
+
+    const AGENT_COLORS = {
+      CEO:'#6C63FF',CTO:'#00D4FF',CFO:'#00C853',
+      Marketing:'#FF6D00',Legal:'#E040FB',Product:'#FF5252',
+      Designer:'#546E7A',DevOps:'#00BCD4',QA:'#FFC107',
+    };
+
+    function roleColor(role) {
+      const key = Object.keys(AGENT_COLORS).find(k => role.toLowerCase().includes(k.toLowerCase()));
+      return AGENT_COLORS[key] || '#9B8FF8';
+    }
+    function abbr(role) {
+      const w = (role||'').split(/\s+/);
+      return w.length >= 2 ? (w[0][0]+w[1][0]).toUpperCase() : (role||'??').substring(0,2).toUpperCase();
+    }
+
+    async function loadResults() {
+      try {
+        const data = await API.getResults(SESSION_ID);
+        renderResults(data);
+      } catch(err) {
+        // Fallback: load session and use agent outputs directly
+        try {
+          const session = await API.getSession(SESSION_ID);
+          renderFromSession(session);
+        } catch(e2) {
+          showToast('Could not load results: ' + e2.message, 'error');
+        }
+      }
+    }
+
+    function renderResults(data) {
+      document.getElementById('skeleton').style.display = 'none';
+      document.getElementById('results-content').style.display = 'block';
+
+      document.getElementById('results-title').textContent = data.title || 'Session Results';
+      document.getElementById('results-meta').innerHTML = buildMeta(data);
+      document.getElementById('exec-desc').textContent   = data.summary || '—';
+      document.getElementById('synthesis-text').textContent = data.synthesis || '—';
+
+      // Metrics
+      const metricsEl = document.getElementById('exec-metrics');
+      (data.metrics || []).forEach(m => {
+        metricsEl.innerHTML += `
+          <div class="metric">
+            <div class="metric-n grad">${m.value}</div>
+            <div class="metric-l">${m.label}</div>
+          </div>`;
+      });
+
+      // Agent outputs
+      const outEl = document.getElementById('agent-outputs');
+      (data.agents || []).forEach(agent => outEl.innerHTML += agentCard(agent));
+
+      // Recommendations
+      const recEl = document.getElementById('recommendations');
+      (data.recommendations || []).forEach(rec => {
+        recEl.innerHTML += `
+          <div class="agent-out-card" style="margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:flex-start">
+              <span style="color:var(--warning);font-size:14px;flex-shrink:0">→</span>
+              <div class="aoc-body">${esc(rec)}</div>
+            </div>
+          </div>`;
+      });
+    }
+
+    function renderFromSession(session) {
+      document.getElementById('skeleton').style.display = 'none';
+      document.getElementById('results-content').style.display = 'block';
+
+      const desc = session.description || 'Session';
+      document.getElementById('results-title').textContent = desc.substring(0, 80);
+      document.getElementById('results-meta').innerHTML = buildMeta({
+        session_id: session.id,
+        agent_count: (session.agents || []).length,
+        status: session.status,
+        created_at: session.created_at,
+      });
+
+      document.getElementById('exec-desc').textContent =
+        `Organization: "${desc}"\n\nStatus: ${session.status}\nAgents: ${(session.agents||[]).length}`;
+
+      const outEl = document.getElementById('agent-outputs');
+      if (!session.agents || session.agents.length === 0) {
+        outEl.innerHTML = '<div class="empty-state"><div class="empty-icon">◫</div><p>No agent outputs yet. Session may still be running.</p></div>';
+      } else {
+        session.agents.forEach(agent => outEl.innerHTML += agentCard(agent));
+      }
+
+      document.getElementById('synthesis-text').textContent =
+        session.status === 'completed'
+          ? 'All agents have completed their tasks. See individual outputs above.'
+          : 'Session is still running. Check back when complete.';
+    }
+
+    function agentCard(agent) {
+      const color = roleColor(agent.role || '');
+      const out   = agent.output || 'No output yet.';
+      const short = out.length > 400 ? out.substring(0, 400) + '…' : out;
+      const statusBadge = `<span class="badge badge-${agent.status||'pending'}" style="margin-left:auto"><span class="status-dot dot-${agent.status||'pending'}"></span>${agent.status||'pending'}</span>`;
+      return `
+        <div class="agent-out-card">
+          <div class="aoc-header">
+            <div class="aoc-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${abbr(agent.role)}</div>
+            <div>
+              <div class="aoc-name">${agent.display_name || agent.role}</div>
+              <div class="aoc-role">${agent.role} · ${agent.model || '—'}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="aoc-body" id="out-body-${agent.agent_id||agent.id}">${esc(short)}</div>
+          ${out.length > 400 ? `<span class="aoc-expand" onclick="expandOut('${agent.agent_id||agent.id}',\`${esc(out)}\`)">Show full output ↓</span>` : ''}
+        </div>`;
+    }
+
+    function expandOut(id, full) {
+      const el = document.getElementById(`out-body-${id}`);
+      if (el) el.textContent = full;
+      event.target.remove();
+    }
+
+    function buildMeta(data) {
+      const parts = [];
+      if (data.session_id) parts.push(`<span>ID: ${data.session_id}</span>`);
+      if (data.agent_count) parts.push(`<span>${data.agent_count} agents</span>`);
+      if (data.runtime)  parts.push(`<span>${data.runtime}</span>`);
+      if (data.cost)     parts.push(`<span>${data.cost} total cost</span>`);
+      if (data.status)   parts.push(`<span style="color:var(--success)">${data.status}</span>`);
+      return parts.join('<span class="meta-sep"></span>');
+    }
+
+    function scrollTo(hash, item) {
+      document.querySelectorAll('.sidenav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const el = document.querySelector(hash);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function goBack() { window.history.back(); }
+
+    function copyShareLink() {
+      navigator.clipboard.writeText(window.location.href)
+        .then(() => showToast('Share link copied!', 'success'));
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'&#96;');
+    }
+
+    function showToast(msg, type='info') {
+      const wrap = document.getElementById('toasts');
+      const el   = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = `<span>${type==='success'?'✓':type==='error'?'✕':'ℹ'}</span><span>${msg}</span>`;
+      wrap.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    loadResults();
+  </script>
+</body>
+</html>

@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PRISM — Adaptive Compute Infrastructure</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,5 95,50 50,95 5,50%22 fill=%22none%22 stroke=%22%23ffb454%22 stroke-width=%226%22/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #07080a;
+    --bg-soft: #0c0e11;
+    --panel: rgba(255,255,255,0.035);
+    --panel-strong: rgba(255,255,255,0.055);
+    --border: rgba(255,255,255,0.09);
+    --border-soft: rgba(255,255,255,0.06);
+    --text: #e7e9ed;
+    --muted: #888d99;
+    --muted-dim: #5b5f6a;
+    --accent: #ffb454;
+    --accent-dim: rgba(255,180,84,0.14);
+    --metal: #c4c8d0;
+    --radius: 2px;
+    --maxw: 1280px;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html{ scroll-behavior:smooth; }
+
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 400;
+    line-height: 1.5;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  ::selection{ background: var(--accent); color:#1a1100; }
+
+  a{ color: inherit; text-decoration:none; }
+
+  .mono{ font-family:'JetBrains Mono', monospace; }
+
+  /* ---------- noise + grid overlay ---------- */
+  .grain{
+    position: fixed; inset:0; z-index: 50; pointer-events:none;
+    opacity: 0.035; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .gridlines{
+    position: fixed; inset:0; z-index: 1; pointer-events:none;
+    background-image:
+      repeating-linear-gradient(to right, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 120px),
+      repeating-linear-gradient(to bottom, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 120px);
+    opacity:0.5;
+  }
+
+  /* ---------- custom cursor ---------- */
+  .cursor{
+    position: fixed; top:0; left:0; width:8px; height:8px; border-radius:50%;
+    background: var(--accent); pointer-events:none; z-index: 999;
+    transform: translate(-50%,-50%); transition: width .18s, height .18s, background .18s, opacity .18s;
+    mix-blend-mode: difference;
+  }
+  .cursor::after{
+    content:''; position:absolute; top:50%; left:50%; width:34px; height:34px;
+    border:1px solid rgba(255,255,255,0.35); border-radius:50%;
+    transform: translate(-50%,-50%); transition: width .25s, height .25s, border-color .25s;
+  }
+  .cursor.hover{ background: transparent; }
+  .cursor.hover::after{ width:54px; height:54px; border-color: var(--accent); }
+  @media (max-width: 860px){ .cursor{ display:none; } body{ cursor:auto; } }
+
+  /* ---------- 3D background ---------- */
+  #bg{
+    position: fixed; inset:0; z-index:0; display:block;
+  }
+
+  /* ---------- layout helpers ---------- */
+  .wrap{ max-width: var(--maxw); margin:0 auto; padding:0 32px; }
+  section{ position:relative; z-index:2; background: var(--bg); }
+  #hero{ background: transparent; }
+
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.25em;
+    text-transform:uppercase; color: var(--accent); display:flex; align-items:center; gap:10px;
+    margin-bottom: 22px;
+  }
+  .eyebrow::before{ content:''; width:22px; height:1px; background: var(--accent); display:inline-block; }
+
+  /* ---------- nav ---------- */
+  nav{
+    position: fixed; top:0; left:0; right:0; z-index: 40;
+    backdrop-filter: blur(16px) saturate(160%);
+    background: rgba(7,8,10,0.55);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .nav-inner{
+    max-width: var(--maxw); margin:0 auto; padding: 20px 32px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .logo{
+    font-weight:700; font-size:19px; letter-spacing:.08em; display:flex; align-items:center; gap:10px;
+  }
+  .logo svg{ width:20px; height:20px; }
+  .logo span{ color: var(--muted); font-weight:400; font-size:12px; font-family:'JetBrains Mono',monospace; margin-left:2px; }
+
+  .nav-links{ display:flex; gap:40px; align-items:center; }
+  .nav-links a{
+    font-family:'JetBrains Mono', monospace; font-size:13px; letter-spacing:.05em; color: var(--muted);
+    transition: color .2s; position:relative;
+  }
+  .nav-links a:hover{ color: var(--text); }
+  .nav-links a::after{
+    content:''; position:absolute; left:0; bottom:-6px; width:0; height:1px; background: var(--accent);
+    transition: width .25s;
+  }
+  .nav-links a:hover::after{ width:100%; }
+
+  .btn{
+    font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    padding: 12px 22px; border:1px solid var(--border); border-radius: var(--radius);
+    transition: all .25s; display:inline-flex; align-items:center; gap:10px; white-space:nowrap;
+  }
+  .btn-primary{ background: var(--accent); color:#1a1100; border-color: var(--accent); font-weight:600; }
+  .btn-primary:hover{ background: transparent; color: var(--accent); }
+  .btn-ghost{ color: var(--text); background: var(--panel); }
+  .btn-ghost:hover{ border-color: var(--accent); color: var(--accent); }
+  .btn-ghost svg, .btn-primary svg{ width:14px; height:14px; }
+
+  .menu-toggle{ display:none; }
+
+  /* ---------- hero ---------- */
+  #hero{
+    min-height: 100vh; display:flex; flex-direction:column; justify-content:center;
+    padding-top: 100px; padding-bottom:60px;
+  }
+  .hero-grid{
+    display:grid; grid-template-columns: 1.3fr 1fr; gap: 60px; align-items:end;
+  }
+  .hero-title{
+    font-size: clamp(42px, 6.4vw, 92px); font-weight:700; line-height:1.04; letter-spacing:-0.01em;
+  }
+  .hero-title .accent{ color: var(--accent); }
+  .hero-sub{
+    margin-top:26px; color: var(--muted); font-size:17px; max-width:480px; line-height:1.7;
+  }
+  .hero-actions{ display:flex; gap:16px; margin-top:42px; flex-wrap:wrap; }
+
+  .telemetry{
+    border:1px solid var(--border); background: var(--panel);
+    backdrop-filter: blur(20px) saturate(180%);
+    padding:22px; border-radius: var(--radius);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .telemetry-row{ display:flex; justify-content:space-between; align-items:center; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); }
+  .telemetry-row b{ color: var(--text); font-weight:500; font-size:13px; }
+  .telemetry-row .dot{ width:6px; height:6px; border-radius:50%; background: var(--accent); display:inline-block; margin-right:8px; box-shadow:0 0 8px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
+  .telemetry hr{ border:none; border-top:1px solid var(--border-soft); }
+
+  .scroll-cue{
+    margin-top:90px; display:flex; align-items:center; gap:14px; color: var(--muted-dim);
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+  }
+  .scroll-cue .line{ width:1px; height:40px; background: linear-gradient(to bottom, var(--accent), transparent); animation: scrollline 2s infinite; }
+  @keyframes scrollline{ 0%{ transform: scaleY(0); transform-origin:top; } 50%{ transform: scaleY(1); transform-origin:top; } 50.01%{ transform-origin:bottom; } 100%{ transform: scaleY(0); transform-origin:bottom; } }
+
+  /* ---------- ticker ---------- */
+  .ticker{
+    border-top:1px solid var(--border-soft); border-bottom:1px solid var(--border-soft);
+    overflow:hidden; padding: 18px 0; background: var(--bg-soft);
+  }
+  .ticker-track{
+    display:flex; gap:60px; white-space:nowrap; width: max-content;
+    animation: marquee 38s linear infinite;
+    font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:.15em; color: var(--muted);
+  }
+  .ticker-track span{ display:flex; align-items:center; gap:60px; }
+  .ticker-track b{ color: var(--accent); font-weight:500; }
+  @keyframes marquee{ from{ transform: translateX(0); } to{ transform: translateX(-50%); } }
+
+  /* ---------- reveal ---------- */
+  .reveal{ opacity:0; transform: translateY(28px); transition: opacity .8s ease, transform .8s ease; }
+  .reveal.visible{ opacity:1; transform: translateY(0); }
+  .reveal.d1{ transition-delay:.08s; } .reveal.d2{ transition-delay:.16s; } .reveal.d3{ transition-delay:.24s; }
+  .reveal.d4{ transition-delay:.32s; } .reveal.d5{ transition-delay:.4s; } .reveal.d6{ transition-delay:.48s; }
+
+  /* ---------- section heading ---------- */
+  .section-pad{ padding: 130px 0; }
+  .section-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:40px; margin-bottom:70px; flex-wrap:wrap; }
+  .section-head h2{ font-size: clamp(30px,4vw,52px); font-weight:600; letter-spacing:-0.01em; max-width:620px; line-height:1.2; }
+  .section-head p{ color: var(--muted); max-width:340px; font-size:15px; line-height:1.7; }
+
+  /* ---------- features ---------- */
+  .feature-grid{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap:1px;
+    border:1px solid var(--border-soft); background: var(--border-soft);
+  }
+  .feature-card{
+    background: var(--bg); padding: 38px 32px; transition: background .3s;
+    display:flex; flex-direction:column; gap:18px; min-height:240px;
+  }
+  .feature-card:hover{ background: var(--bg-soft); }
+  .feature-card .idx{ font-family:'JetBrains Mono',monospace; font-size:12px; color: var(--muted-dim); letter-spacing:.1em; }
+  .feature-card .icon{ width:34px; height:34px; color: var(--metal); transition: color .3s, transform .3s; }
+  .feature-card:hover .icon{ color: var(--accent); transform: translateY(-3px); }
+  .feature-card h3{ font-size:19px; font-weight:600; letter-spacing:-0.01em; }
+  .feature-card p{ color: var(--muted); font-size:14px; line-height:1.7; }
+
+  @media (max-width: 900px){
+    .feature-grid{ grid-template-columns: repeat(2,1fr); }
+  }
+  @media (max-width: 620px){
+    .feature-grid{ grid-template-columns: 1fr; }
+  }
+
+  /* ---------- showcase ---------- */
+  .showcase{ display:grid; grid-template-columns: 1fr 1fr; gap:80px; align-items:center; }
+  .showcase-visual{
+    aspect-ratio: 1/1; border:1px solid var(--border); border-radius: var(--radius);
+    background: var(--panel); backdrop-filter: blur(20px) saturate(180%);
+    position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .showcase-visual svg{ width:78%; height:78%; }
+  .showcase-visual .corner{ position:absolute; width:16px; height:16px; border: 1px solid var(--accent); opacity:.6; }
+  .showcase-visual .corner.tl{ top:14px; left:14px; border-right:none; border-bottom:none; }
+  .showcase-visual .corner.br{ bottom:14px; right:14px; border-left:none; border-top:none; }
+  .showcase-visual .tag{
+    position:absolute; top:18px; right:22px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    color: var(--muted-dim); letter-spacing:.2em;
+  }
+
+  .spec-list{ display:flex; flex-direction:column; }
+  .spec-row{
+    display:flex; justify-content:space-between; align-items:baseline; gap:24px;
+    padding: 26px 0; border-bottom:1px solid var(--border-soft);
+  }
+  .spec-row:first-child{ border-top:1px solid var(--border-soft); }
+  .spec-row .num{ font-family:'JetBrains Mono',monospace; font-size:12px; color: var(--accent); letter-spacing:.15em; min-width:34px; }
+  .spec-row .label{ font-size:18px; font-weight:500; flex:1; }
+  .spec-row .val{ font-family:'JetBrains Mono',monospace; font-size:13px; color: var(--muted); text-align:right; }
+
+  /* ---------- stats ---------- */
+  .stats-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:1px; border:1px solid var(--border-soft); background: var(--border-soft); }
+  .stat{ background: var(--bg); padding: 46px 30px; }
+  .stat .num{ font-family:'JetBrains Mono',monospace; font-size: clamp(28px,4vw,46px); font-weight:600; color: var(--text); display:flex; align-items:baseline; gap:4px; }
+  .stat .num small{ font-size:16px; color: var(--accent); }
+  .stat .label{ margin-top:10px; color: var(--muted); font-size:13px; letter-spacing:.05em; }
+  @media (max-width: 900px){ .stats-grid{ grid-template-columns: repeat(2,1fr); } }
+
+  /* ---------- cta ---------- */
+  .cta-panel{
+    border:1px solid var(--border); border-radius: var(--radius);
+    background: linear-gradient(135deg, rgba(255,180,84,0.07), rgba(255,255,255,0.02));
+    backdrop-filter: blur(20px) saturate(180%);
+    padding: 90px 60px; text-align:center; position:relative; overflow:hidden;
+  }
+  .cta-panel::before{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(circle at 50% 0%, rgba(255,180,84,0.12), transparent 60%);
+  }
+  .cta-panel h2{ font-size: clamp(30px,5vw,56px); font-weight:700; letter-spacing:-0.01em; max-width:760px; margin:0 auto 28px; line-height:1.15; }
+  .cta-panel p{ color: var(--muted); max-width:480px; margin: 0 auto 40px; font-size:15px; }
+  .cta-actions{ display:flex; gap:16px; justify-content:center; flex-wrap:wrap; position:relative; z-index:1; }
+
+  /* ---------- footer ---------- */
+  footer{ border-top:1px solid var(--border-soft); padding: 70px 0 40px; }
+  .footer-grid{ display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap:50px; margin-bottom:60px; }
+  .footer-brand p{ color: var(--muted); font-size:14px; max-width:280px; margin-top:18px; line-height:1.7; }
+  .footer-col h4{ font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.2em; text-transform:uppercase; color: var(--muted-dim); margin-bottom:20px; }
+  .footer-col a{ display:block; color: var(--muted); font-size:14px; margin-bottom:12px; transition: color .2s; }
+  .footer-col a:hover{ color: var(--accent); }
+  .footer-bottom{
+    display:flex; justify-content:space-between; align-items:center; padding-top:30px;
+    border-top:1px solid var(--border-soft); font-family:'JetBrains Mono',monospace; font-size:12px; color: var(--muted-dim);
+    flex-wrap:wrap; gap:20px;
+  }
+  @media (max-width: 900px){ .footer-grid{ grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px){ .footer-grid{ grid-template-columns: 1fr; } }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 980px){
+    .nav-links{ display:none; }
+    .hero-grid{ grid-template-columns: 1fr; gap:50px; }
+    .showcase{ grid-template-columns: 1fr; gap:50px; }
+    .showcase-visual{ order:-1; max-width:420px; margin:0 auto; }
+    .section-pad{ padding:90px 0; }
+  }
+  @media (max-width: 560px){
+    .wrap{ padding:0 20px; }
+    .nav-inner{ padding:16px 20px; }
+    .hero-actions{ flex-direction:column; align-items:stretch; }
+  }
+</style>
+</head>
+<body>
+
+  <canvas id="bg"></canvas>
+  <div class="gridlines"></div>
+  <div class="grain"></div>
+  <div class="cursor"></div>
+
+  <nav>
+    <div class="nav-inner wrap" style="padding-left:32px; padding-right:32px;">
+      <a href="#hero" class="logo">
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,50 50,95 5,50" stroke="#ffb454" stroke-width="6"/></svg>
+        PRISM <span>/ v4.2</span>
+      </a>
+      <div class="nav-links">
+        <a href="#platform">Platform</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#specs">Specs</a>
+        <a href="#access">Access</a>
+      </div>
+      <a href="#access" class="btn btn-primary">Request Access</a>
+    </div>
+  </nav>
+
+  <main>
+    <!-- HERO -->
+    <section id="hero">
+      <div class="wrap">
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow reveal visible">ADAPTIVE COMPUTE — SYSTEM 04</div>
+            <h1 class="hero-title reveal visible">Infrastructure<br>that reshapes<br>itself <span class="accent">in real time.</span></h1>
+            <p class="hero-sub reveal visible d1">PRISM reallocates compute, routing, and storage across a global mesh as load shifts — no manual scaling, no downtime windows, no guesswork.</p>
+            <div class="hero-actions reveal visible d2">
+              <a href="#access" class="btn btn-primary">Request Access <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+              <a href="#architecture" class="btn btn-ghost">Read the architecture</a>
+            </div>
+            <div class="scroll-cue reveal visible d3"><div class="line"></div> Scroll</div>
+          </div>
+          <div class="telemetry reveal visible d2">
+            <div class="telemetry-row"><span><i class="dot"></i>Cluster status</span><b>Operational</b></div>
+            <hr>
+            <div class="telemetry-row"><span>Active nodes</span><b class="mono">48,221</b></div>
+            <div class="telemetry-row"><span>Mesh latency</span><b class="mono">1.84 ms</b></div>
+            <div class="telemetry-row"><span>Throughput</span><b class="mono">4.2M req/s</b></div>
+            <div class="telemetry-row"><span>Regions online</span><b class="mono">180 / 180</b></div>
+            <hr>
+            <div class="telemetry-row"><span>Build</span><b class="mono">PRISM-OS 4.2.1</b></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TICKER -->
+    <div class="ticker">
+      <div class="ticker-track">
+        <span><b>99.999%</b> UPTIME · <b>&lt;2MS</b> EDGE LATENCY · <b>4.2M</b> REQ/SEC · <b>180</b> REGIONS · ZERO-TRUST BY DEFAULT · SELF-HEALING MESH ·</span>
+        <span><b>99.999%</b> UPTIME · <b>&lt;2MS</b> EDGE LATENCY · <b>4.2M</b> REQ/SEC · <b>180</b> REGIONS · ZERO-TRUST BY DEFAULT · SELF-HEALING MESH ·</span>
+      </div>
+    </div>
+
+    <!-- FEATURES -->
+    <section id="platform" class="section-pad">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 class="reveal visible">Built for systems that<br>are not allowed to fail.</h2>
+          <p class="reveal visible d1">Six primitives, composed automatically. Each one reacts to the others — together they behave less like a stack and more like an organism.</p>
+        </div>
+        <div class="feature-grid">
+
+          <div class="feature-card reveal visible d1">
+            <span class="idx">01</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M24 4 42 14v20L24 44 6 34V14z"/><path d="M24 4v20M24 24 6 14M24 24l18-10M24 24v20"/></svg>
+            <h3>Elastic Provisioning</h3>
+            <p>Capacity materializes within milliseconds of demand signals — and dissolves just as fast when it's no longer needed.</p>
+          </div>
+
+          <div class="feature-card reveal visible d2">
+            <span class="idx">02</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="24" cy="24" r="6"/><circle cx="24" cy="24" r="20"/><path d="M24 4v6M24 38v6M4 24h6M38 24h6M9.5 9.5l4.2 4.2M34.3 34.3l4.2 4.2M38.5 9.5l-4.2 4.2M13.7 34.3l-4.2 4.2"/></svg>
+            <h3>Predictive Scaling</h3>
+            <p>Forecasting models trained on traffic history pre-warm regions before the spike arrives, not after.</p>
+          </div>
+
+          <div class="feature-card reveal visible d3">
+            <span class="idx">03</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="6" width="16" height="16"/><rect x="26" y="6" width="16" height="16"/><rect x="6" y="26" width="16" height="16"/><rect x="26" y="26" width="16" height="16"/><path d="M22 14h4M22 34h4M14 22v4M34 22v4"/></svg>
+            <h3>Zero-Downtime Migration</h3>
+            <p>Live workloads shift between nodes mid-request. Connections persist; users never see the seam.</p>
+          </div>
+
+          <div class="feature-card reveal visible d4">
+            <span class="idx">04</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="24" cy="24" r="4"/><circle cx="8" cy="10" r="4"/><circle cx="40" cy="10" r="4"/><circle cx="8" cy="38" r="4"/><circle cx="40" cy="38" r="4"/><path d="M11 12l10 9M37 12l-10 9M11 36l10-9M37 36l-10-9"/></svg>
+            <h3>Edge Mesh Routing</h3>
+            <p>Every request takes the lowest-latency path across a self-organizing graph of 180 regions.</p>
+          </div>
+
+          <div class="feature-card reveal visible d5">
+            <span class="idx">05</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M24 4 8 11v11c0 12 7 19 16 22 9-3 16-10 16-22V11z"/><path d="M17 24l5 5 10-11"/></svg>
+            <h3>Encrypted by Default</h3>
+            <p>End-to-end encryption and per-tenant key isolation are not configuration options — they're the only mode.</p>
+          </div>
+
+          <div class="feature-card reveal visible d6">
+            <span class="idx">06</span>
+            <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 38h40M10 38V22l8-6 8 10 8-16 6 8v20"/></svg>
+            <h3>Real-Time Telemetry</h3>
+            <p>Every node, route, and request is observable at sub-second resolution — no sampling, no delay.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- SHOWCASE -->
+    <section id="architecture" class="section-pad">
+      <div class="wrap">
+        <div class="showcase">
+          <div class="reveal visible">
+            <div class="eyebrow">SYSTEM ARCHITECTURE</div>
+            <h2 style="font-size:clamp(28px,4vw,46px); font-weight:600; letter-spacing:-0.01em; margin-bottom:40px; max-width:480px; line-height:1.25;">A control plane that watches the whole mesh, all the time.</h2>
+            <div class="spec-list">
+              <div class="spec-row"><span class="num">01</span><span class="label">Global control plane</span><span class="val mono">3 regions, active-active</span></div>
+              <div class="spec-row"><span class="num">02</span><span class="label">Data plane</span><span class="val mono">180 edge regions</span></div>
+              <div class="spec-row"><span class="num">03</span><span class="label">State sync</span><span class="val mono">CRDT, &lt;50ms convergence</span></div>
+              <div class="spec-row"><span class="num">04</span><span class="label">Failover</span><span class="val mono">automatic, &lt;200ms</span></div>
+              <div class="spec-row"><span class="num">05</span><span class="label">API surface</span><span class="val mono">REST · gRPC · WebSocket</span></div>
+            </div>
+          </div>
+          <div class="showcase-visual reveal visible d2">
+            <div class="corner tl"></div><div class="corner br"></div>
+            <div class="tag mono">FIG. 03 — MESH</div>
+            <svg viewBox="0 0 200 200" fill="none" stroke="#c4c8d0" stroke-width="0.6">
+              <circle cx="100" cy="100" r="90" stroke-opacity="0.25"/>
+              <circle cx="100" cy="100" r="60" stroke-opacity="0.35"/>
+              <circle cx="100" cy="100" r="30" stroke-opacity="0.5"/>
+              <g stroke="#ffb454" stroke-width="0.8">
+                <line x1="100" y1="10" x2="100" y2="190"/>
+                <line x1="10" y1="100" x2="190" y2="100"/>
+                <line x1="26" y1="26" x2="174" y2="174"/>
+                <line x1="174" y1="26" x2="26" y2="174"/>
+              </g>
+              <g fill="#ffb454" stroke="none">
+                <circle cx="100" cy="100" r="3"/>
+                <circle cx="100" cy="10" r="2"/>
+                <circle cx="100" cy="190" r="2"/>
+                <circle cx="10" cy="100" r="2"/>
+                <circle cx="190" cy="100" r="2"/>
+                <circle cx="26" cy="26" r="2"/>
+                <circle cx="174" cy="174" r="2"/>
+                <circle cx="174" cy="26" r="2"/>
+                <circle cx="26" cy="174" r="2"/>
+              </g>
+              <g fill="#c4c8d0" stroke="none" opacity="0.6">
+                <circle cx="160" cy="70" r="1.6"/>
+                <circle cx="60" cy="150" r="1.6"/>
+                <circle cx="140" cy="150" r="1.6"/>
+                <circle cx="50" cy="55" r="1.6"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <section id="specs" class="section-pad" style="padding-top:0;">
+      <div class="wrap">
+        <div class="stats-grid">
+          <div class="stat reveal visible d1"><div class="num">99.999<small>%</small></div><div class="label">Guaranteed uptime SLA</div></div>
+          <div class="stat reveal visible d2"><div class="num">1.8<small>ms</small></div><div class="label">P50 edge latency</div></div>
+          <div class="stat reveal visible d3"><div class="num">4.2<small>M/s</small></div><div class="label">Peak requests handled</div></div>
+          <div class="stat reveal visible d4"><div class="num">180<small>+</small></div><div class="label">Edge regions live</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section id="access" class="section-pad">
+      <div class="wrap">
+        <div class="cta-panel reveal visible">
+          <div class="eyebrow" style="justify-content:center;">EARLY ACCESS — COHORT 04</div>
+          <h2>Deploy your first<br>self-balancing cluster today.</h2>
+          <p>Cohort 04 is open to a limited number of teams. Onboarding takes under fifteen minutes, with a dedicated architect on call for the first 30 days.</p>
+          <div class="cta-actions">
+            <a href="#" class="btn btn-primary">Request Access <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+            <a href="#" class="btn btn-ghost">Talk to an engineer</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#hero" class="logo">
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,50 50,95 5,50" stroke="#ffb454" stroke-width="6"/></svg>
+            PRISM <span>/ v4.2</span>
+          </a>
+          <p>Adaptive compute infrastructure for systems that can't afford to stand still. Built on a self-organizing global mesh.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Platform</h4>
+          <a href="#platform">Provisioning</a>
+          <a href="#platform">Routing</a>
+          <a href="#platform">Telemetry</a>
+          <a href="#platform">Security</a>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <a href="#">About</a>
+          <a href="#">Careers</a>
+          <a href="#">Press</a>
+          <a href="#">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="#architecture">Architecture</a>
+          <a href="#specs">Status</a>
+          <a href="#">Docs</a>
+          <a href="#">Changelog</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 PRISM SYSTEMS — ALL RIGHTS RESERVED</span>
+        <span>BUILD 4.2.1 — REGION: GLOBAL</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { RoomEnvironment } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js';
+
+    const canvas = document.getElementById('bg');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference:'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    const scene = new THREE.Scene();
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 9);
+
+    const group = new THREE.Group();
+    group.position.set(1.6, 0.4, 0);
+    scene.add(group);
+
+    const metalMat = new THREE.MeshPhysicalMaterial({
+      color: 0xb8bcc4, metalness: 1, roughness: 0.14, clearcoat: 0.4, clearcoatRoughness: 0.25
+    });
+    const accentMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffb454, metalness: 0.7, roughness: 0.3, emissive: 0xffb454, emissiveIntensity: 0.18
+    });
+    const darkMat = new THREE.MeshPhysicalMaterial({
+      color: 0x2a2c31, metalness: 0.9, roughness: 0.35, clearcoat: 0.3
+    });
+
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.7, 1), metalMat);
+    group.add(core);
+
+    const ring1 = new THREE.Mesh(new THREE.TorusGeometry(2.7, 0.035, 16, 120), accentMat);
+    ring1.rotation.x = Math.PI / 2.6;
+    ring1.rotation.y = Math.PI / 8;
+    group.add(ring1);
+
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.018, 16, 120), metalMat);
+    ring2.rotation.x = Math.PI / 1.8;
+    ring2.rotation.y = Math.PI / 5;
+    group.add(ring2);
+
+    const ring3 = new THREE.Mesh(new THREE.TorusGeometry(4.1, 0.012, 16, 120), darkMat);
+    ring3.rotation.x = Math.PI / 3.2;
+    ring3.rotation.z = Math.PI / 6;
+    group.add(ring3);
+
+    // satellite shapes
+    const sat1 = new THREE.Mesh(new THREE.OctahedronGeometry(0.32), accentMat);
+    sat1.position.set(3.4, 1.1, 0.6);
+    group.add(sat1);
+
+    const sat2 = new THREE.Mesh(new THREE.TetrahedronGeometry(0.26), metalMat);
+    sat2.position.set(-2.6, -1.4, 0.8);
+    group.add(sat2);
+
+    const sat3 = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), darkMat);
+    sat3.position.set(-1.2, 2.6, -0.4);
+    group.add(sat3);
+
+    // particle field
+    const particleCount = 700;
+    const positions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+      const r = 6 + Math.random() * 10;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      positions[i*3]     = r * Math.sin(phi) * Math.cos(theta);
+      positions[i*3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i*3 + 2] = r * Math.cos(phi) - 5;
+    }
+    const particlesGeo = new THREE.BufferGeometry();
+    particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particlesMat = new THREE.PointsMaterial({ color: 0x8b8f99, size: 0.018, transparent: true, opacity: 0.45 });
+    const particles = new THREE.Points(particlesGeo, particlesMat);
+    scene.add(particles);
+
+    // lights
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(5, 5, 6);
+    scene.add(key);
+
+    const rim = new THREE.PointLight(0xffb454, 12, 24);
+    rim.position.set(-4, -2, 3);
+    scene.add(rim);
+
+    const fill = new THREE.AmbientLight(0x404048, 0.6);
+    scene.add(fill);
+
+    // mouse parallax
+    let mouseX = 0, mouseY = 0;
+    window.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / window.innerWidth - 0.5);
+      mouseY = (e.clientY / window.innerHeight - 0.5);
+    });
+
+    let scrollY = 0;
+    window.addEventListener('scroll', () => { scrollY = window.scrollY; });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      group.rotation.y += 0.0026;
+      group.rotation.x += 0.0009;
+      ring2.rotation.z += 0.0015;
+      particles.rotation.y += 0.0003;
+
+      const targetX = mouseX * 1.4;
+      const targetY = -mouseY * 1.4;
+      camera.position.x += (targetX - camera.position.x) * 0.04;
+      camera.position.y += (targetY - camera.position.y) * 0.04;
+
+      group.position.y = 0.4 - scrollY * 0.0018;
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+  </script>
+
+  <script>
+    // custom cursor
+    const cursor = document.querySelector('.cursor');
+    window.addEventListener('mousemove', (e) => {
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top = e.clientY + 'px';
+    });
+    document.querySelectorAll('a, button, .feature-card').forEach((el) => {
+      el.addEventListener('mouseenter', () => cursor.classList.add('hover'));
+      el.addEventListener('mouseleave', () => cursor.classList.remove('hover'));
+    });
+
+    // scroll reveal (re-trigger on scroll for elements already marked visible by default off-screen)
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) entry.target.classList.add('visible');
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.reveal').forEach((el) => {
+      el.classList.remove('visible');
+      observer.observe(el);
+    });
+    // hero elements should show immediately
+    document.querySelectorAll('#hero .reveal').forEach((el) => el.classList.add('visible'));
+  </script>
+
+</body>
+</html>
