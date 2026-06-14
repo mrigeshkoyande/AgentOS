@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentOS — Results</title>
+  <title>AgentOS — Synthesis Report</title>
   <link rel="stylesheet" href="css/main.css" />
   <style>
     body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -12,61 +12,62 @@
 
     /* ── Left nav ── */
     .sidenav {
-      width: 200px; flex-shrink: 0;
-      background: var(--surface);
+      width: 240px; flex-shrink: 0;
+      background: var(--surface-container-low);
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column;
-      padding: 16px 10px;
+      padding: 24px 16px;
+      transition: background-color 0.4s;
     }
-    .sidenav-section { font-size: 10px; font-weight: 600; color: var(--text-4); letter-spacing: .08em; text-transform: uppercase; padding: 10px 8px 5px; }
+    .sidenav-section { font-family: var(--font-label); font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: .08em; text-transform: uppercase; padding: 12px 12px 6px; }
     .sidenav-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: 8px;
-      font-size: 12px; font-weight: 500; color: var(--text-2);
-      cursor: pointer; transition: all .15s; margin-bottom: 1px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-radius: var(--radius-btn);
+      font-size: 13px; font-weight: 600; color: var(--text-secondary);
+      cursor: pointer; transition: all .2s; margin-bottom: 2px;
     }
-    .sidenav-item:hover  { background: rgba(255,255,255,.04); color: var(--text); }
-    .sidenav-item.active { background: var(--primary-dim); color: var(--primary); }
+    .sidenav-item:hover  { background: var(--surface-container-high); color: var(--text); }
+    .sidenav-item.active { background: var(--primary-container); color: var(--primary); }
     .sidenav-footer {
-      margin-top: auto; padding-top: 16px;
+      margin-top: auto; padding-top: 20px;
       border-top: 1px solid var(--border);
     }
 
     /* ── Main content ── */
-    .main { flex: 1; overflow-y: auto; padding: 32px 40px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.07) transparent; }
+    .main { flex: 1; overflow-y: auto; padding: 48px 64px; scrollbar-width: thin; scrollbar-color: var(--border-hov) transparent; }
 
-    .results-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
-    .results-title   { font-size: 22px; font-weight: 700; }
-    .results-meta    { font-size: 11px; color: var(--text-3); margin-bottom: 28px; display: flex; align-items: center; gap: 10px; }
-    .meta-sep        { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.2); }
+    .results-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+    .results-title   { font-family: var(--font-headline); font-size: 28px; font-weight: 800; }
+    .results-meta    { font-family: var(--font-label); font-size: 12px; color: var(--text-muted); margin-bottom: 36px; display: flex; align-items: center; gap: 12px; }
+    .meta-sep        { width: 4px; height: 4px; border-radius: 50%; background: var(--border-hov); }
 
     /* ── Section ── */
-    .section        { margin-bottom: 32px; }
-    .section-title  { font-size: 13px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; color: rgba(255,255,255,.85); }
+    .section        { margin-bottom: 40px; }
+    .section-title  { font-family: var(--font-headline); font-size: 14px; font-weight: 800; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
 
     /* ── Executive summary card ── */
-    .exec-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
-    .exec-desc { font-size: 13px; line-height: 1.75; color: var(--text-2); margin-bottom: 20px; }
-    .metrics   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .metric    { background: rgba(255,255,255,.03); border-radius: 10px; padding: 16px; text-align: center; }
-    .metric-n  { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
-    .metric-l  { font-size: 10px; color: var(--text-3); margin-top: 4px; }
+    .exec-card { background: var(--surface-container-lowest); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 32px; box-shadow: var(--shadow); }
+    .exec-desc { font-size: 14px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 24px; white-space: pre-wrap; }
+    .metrics   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .metric    { background: var(--surface-container-low); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; text-align: center; }
+    .metric-n  { font-family: var(--font-headline); font-size: 28px; font-weight: 800; color: var(--primary); }
+    .metric-l  { font-family: var(--font-label); font-size: 11px; color: var(--text-muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
 
     /* ── Agent output card ── */
-    .agent-out-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
-    .aoc-header     { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .aoc-avatar     { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
-    .aoc-name       { font-size: 12px; font-weight: 600; }
-    .aoc-role       { font-size: 10px; color: var(--text-3); }
-    .aoc-body       { font-size: 12px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
-    .aoc-expand     { font-size: 11px; color: var(--primary); cursor: pointer; margin-top: 8px; display: inline-block; }
+    .agent-out-card { background: var(--surface-container-lowest); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 24px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .aoc-header     { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .aoc-avatar     { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-label); font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .aoc-name       { font-size: 13px; font-weight: 700; }
+    .aoc-role       { font-family: var(--font-label); font-size: 10px; color: var(--text-muted); }
+    .aoc-body       { font-size: 13px; line-height: 1.7; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
+    .aoc-expand     { font-family: var(--font-label); font-size: 11px; color: var(--primary); cursor: pointer; margin-top: 10px; display: inline-block; font-weight: 600; }
 
     /* ── Download buttons ── */
-    .dl-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .dl-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
     /* skeleton */
-    .skel-line { height: 14px; border-radius: 6px; margin-bottom: 10px; }
-    .skel-para { height: 80px; border-radius: 10px; margin-bottom: 16px; }
+    .skel-line { height: 16px; border-radius: var(--radius-xs); margin-bottom: 12px; }
+    .skel-para { height: 100px; border-radius: var(--radius-md); margin-bottom: 20px; }
   </style>
 </head>
 <body>
@@ -77,8 +78,8 @@
       AgentOS
     </div>
     <nav class="topbar-nav">
-      <a href="index.html">Home</a>
-      <a href="session.html" id="back-session">Session</a>
+      <a href="index.html">Workspace</a>
+      <a href="session.html" id="back-session">Console</a>
       <a href="results.html" class="active">Results</a>
     </nav>
     <div style="display:flex;gap:8px">
@@ -109,8 +110,8 @@
     <main class="main" id="main-content">
       <!-- Loading skeleton -->
       <div id="skeleton">
-        <div style="height:28px;width:60%" class="skeleton skel-line"></div>
-        <div style="height:12px;width:40%;margin-bottom:28px" class="skeleton skel-line"></div>
+        <div style="height:32px;width:60%" class="skeleton skel-line"></div>
+        <div style="height:14px;width:40%;margin-bottom:32px" class="skeleton skel-line"></div>
         <div class="skeleton skel-para"></div>
         <div class="skeleton skel-para"></div>
         <div class="skeleton skel-para"></div>
@@ -130,7 +131,7 @@
         <!-- Executive Summary -->
         <div class="section" id="sec-summary">
           <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C63FF" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             Executive Summary
           </div>
           <div class="exec-card">
@@ -142,7 +143,7 @@
         <!-- Agent Outputs -->
         <div class="section" id="sec-agents">
           <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00D4FF" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0112 0v2"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0112 0v2"/></svg>
             Agent Outputs
           </div>
           <div id="agent-outputs"></div>
@@ -151,7 +152,7 @@
         <!-- Final Synthesis -->
         <div class="section" id="sec-synthesis">
           <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             Final Synthesis
           </div>
           <div class="exec-card">
@@ -162,7 +163,7 @@
         <!-- Recommendations -->
         <div class="section" id="sec-recs">
           <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFB300" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             Recommendations
           </div>
           <div id="recommendations"></div>
@@ -171,8 +172,8 @@
         <!-- Export -->
         <div class="section">
           <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Option
           </div>
           <div class="dl-row">
             <button class="btn btn-primary" onclick="API.exportResults(SESSION_ID,'json')">↓ Download JSON</button>
@@ -189,6 +190,7 @@
   <div class="toasts" id="toasts"></div>
 
   <script src="js/api.js"></script>
+  <script src="js/nav.js"></script>
   <script>
     const params     = new URLSearchParams(window.location.search);
     const SESSION_ID = params.get('id') || '';
@@ -198,16 +200,25 @@
     // Wire back-to-session link
     document.getElementById('back-session').href = `session.html?id=${SESSION_ID}`;
 
-    const AGENT_COLORS = {
-      CEO:'#6C63FF',CTO:'#00D4FF',CFO:'#00C853',
-      Marketing:'#FF6D00',Legal:'#E040FB',Product:'#FF5252',
-      Designer:'#546E7A',DevOps:'#00BCD4',QA:'#FFC107',
+    const AGENT_COLORS_LIGHT = {
+      CEO:'#77583c',CTO:'#006b58',CFO:'#6d5d32',
+      Marketing:'#a04d00',Legal:'#7f259e',Product:'#ba1a1a',
+      Designer:'#3f5a5e',default:'#5c6f68',
+    };
+
+    const AGENT_COLORS_DARK = {
+      CEO:'#5ed29c',CTO:'#00d2ff',CFO:'#a5d6a7',
+      Marketing:'#ff8f00',Legal:'#d500f9',Product:'#ff1744',
+      Designer:'#80deea',default:'#29b6f6',
     };
 
     function roleColor(role) {
-      const key = Object.keys(AGENT_COLORS).find(k => role.toLowerCase().includes(k.toLowerCase()));
-      return AGENT_COLORS[key] || '#9B8FF8';
+      const isLight = document.documentElement.classList.contains('theme-light');
+      const palette = isLight ? AGENT_COLORS_LIGHT : AGENT_COLORS_DARK;
+      const key = Object.keys(palette).find(k => role.toLowerCase().includes(k.toLowerCase()));
+      return palette[key] || palette.default;
     }
+    
     function abbr(role) {
       const w = (role||'').split(/\s+/);
       return w.length >= 2 ? (w[0][0]+w[1][0]).toUpperCase() : (role||'??').substring(0,2).toUpperCase();
@@ -223,10 +234,20 @@
           const session = await API.getSession(SESSION_ID);
           renderFromSession(session);
         } catch(e2) {
-          showToast('Could not load results: ' + e2.message, 'error');
+          showToastGlobal('Could not load results: ' + e2.message, 'error');
         }
       }
     }
+
+    // Capture theme switch to redraw roles colors if results are loaded
+    document.addEventListener('theme-change', () => {
+      // Clean and reload container
+      const outEl = document.getElementById('agent-outputs');
+      if (outEl) {
+        outEl.innerHTML = '';
+        loadResults();
+      }
+    });
 
     function renderResults(data) {
       document.getElementById('skeleton').style.display = 'none';
@@ -239,25 +260,28 @@
 
       // Metrics
       const metricsEl = document.getElementById('exec-metrics');
+      metricsEl.innerHTML = ''; // reset
       (data.metrics || []).forEach(m => {
         metricsEl.innerHTML += `
           <div class="metric">
-            <div class="metric-n grad">${m.value}</div>
+            <div class="metric-n">${m.value}</div>
             <div class="metric-l">${m.label}</div>
           </div>`;
       });
 
       // Agent outputs
       const outEl = document.getElementById('agent-outputs');
+      outEl.innerHTML = ''; // reset
       (data.agents || []).forEach(agent => outEl.innerHTML += agentCard(agent));
 
       // Recommendations
       const recEl = document.getElementById('recommendations');
+      recEl.innerHTML = ''; // reset
       (data.recommendations || []).forEach(rec => {
         recEl.innerHTML += `
-          <div class="agent-out-card" style="margin-bottom:8px">
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span style="color:var(--warning);font-size:14px;flex-shrink:0">→</span>
+          <div class="agent-out-card" style="margin-bottom:12px">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <span style="color:var(--primary);font-size:16px;flex-shrink:0;font-weight:700">→</span>
               <div class="aoc-body">${esc(rec)}</div>
             </div>
           </div>`;
@@ -281,6 +305,7 @@
         `Organization: "${desc}"\n\nStatus: ${session.status}\nAgents: ${(session.agents||[]).length}`;
 
       const outEl = document.getElementById('agent-outputs');
+      outEl.innerHTML = ''; // reset
       if (!session.agents || session.agents.length === 0) {
         outEl.innerHTML = '<div class="empty-state"><div class="empty-icon">◫</div><p>No agent outputs yet. Session may still be running.</p></div>';
       } else {
@@ -301,7 +326,7 @@
       return `
         <div class="agent-out-card">
           <div class="aoc-header">
-            <div class="aoc-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${abbr(agent.role)}</div>
+            <div class="aoc-avatar" style="background:${color}22;color:${color};border:1.5px solid ${color}44">${abbr(agent.role)}</div>
             <div>
               <div class="aoc-name">${agent.display_name || agent.role}</div>
               <div class="aoc-role">${agent.role} · ${agent.model || '—'}</div>
@@ -325,7 +350,7 @@
       if (data.agent_count) parts.push(`<span>${data.agent_count} agents</span>`);
       if (data.runtime)  parts.push(`<span>${data.runtime}</span>`);
       if (data.cost)     parts.push(`<span>${data.cost} total cost</span>`);
-      if (data.status)   parts.push(`<span style="color:var(--success)">${data.status}</span>`);
+      if (data.status)   parts.push(`<span style="color:var(--primary)">${data.status}</span>`);
       return parts.join('<span class="meta-sep"></span>');
     }
 
@@ -340,21 +365,12 @@
 
     function copyShareLink() {
       navigator.clipboard.writeText(window.location.href)
-        .then(() => showToast('Share link copied!', 'success'));
+        .then(() => showToastGlobal('Share link copied!', 'success'));
     }
 
     function esc(str) {
       if (!str) return '';
       return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'&#96;');
-    }
-
-    function showToast(msg, type='info') {
-      const wrap = document.getElementById('toasts');
-      const el   = document.createElement('div');
-      el.className = `toast ${type}`;
-      el.innerHTML = `<span>${type==='success'?'✓':type==='error'?'✕':'ℹ'}</span><span>${msg}</span>`;
-      wrap.appendChild(el);
-      setTimeout(() => el.remove(), 4000);
     }
 
     loadResults();
