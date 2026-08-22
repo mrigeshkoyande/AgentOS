@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Tuple
 from .models import Option, Stakeholder, Constraint
 from .preference_engine import calculate_weighted_satisfaction
 from .constraint_engine import validate_option_constraints
-from services.decision.constraint_engine import ConstraintEngine
+from .constraint_engine import ConstraintEngine
 
 # --- Functions for standard decision routing (Person 4 / Remote main) ---
 

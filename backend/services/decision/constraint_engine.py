@@ -56,21 +56,27 @@ def validate_constraint(option: Option, constraint: Constraint) -> Dict[str, Any
     operator = constraint.operator
     target_value = constraint.value
     
-    # Extract attribute value from Option properties dict
-    properties = option.properties or {}
-    option_value = properties.get(criterion)
+    # Extract attribute value from Option attributes dict
+    attributes = option.attributes or {}
+    option_value = attributes.get(criterion)
     
     if option_value is None:
         # If attribute is missing entirely, evaluate as violation
+        status = "infeasible" if constraint.type.upper() == "HARD" else "feasible"
         return {
             "constraint_satisfied": False,
+            "option_status": status,
             "error_message": f"Option is missing the required attribute: {criterion}"
         }
 
     satisfied = check_operator(option_value, operator, target_value)
+    status = "feasible"
+    if not satisfied and constraint.type.upper() == "HARD":
+        status = "infeasible"
     
     return {
         "constraint_satisfied": satisfied,
+        "option_status": status,
         "error_message": "" if satisfied else f"Constraint violated: {criterion} (value: {option_value}) {operator} {target_value}"
     }
 
