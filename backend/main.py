@@ -16,6 +16,13 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agentos_backend")
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass
+
 # Database File Path
 DB_FILE = os.path.join(os.path.dirname(__file__), "agentos.db")
 
@@ -37,6 +44,9 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+from routes.decisions import router as decisions_router
+app.include_router(decisions_router)
 
 # WebSocket Connection Manager
 class ConnectionManager:
