@@ -306,9 +306,9 @@ Results are stored and available as:
 
 ## 📁 Technical References
 
-- [`agent.md`] - Detailed 4-tier memory system specifications
-- [`design.md`] - GraphRAG memory engine architecture (Neo4j + Qdrant)
-- [`project_doc.txt`] - End-to-end project document (Global Orchestrator specs, DAG engine)
-- [`Agents.md`] - Agent lifecycle, roles, and communication protocols
+- [`README.md`](README.md) - Project overview and quick start guide
+- [`agent.md`](agent.md) - Agent specifications, 4-tier memory system, and communication protocols
+- [`design.md`](design.md) - GraphRAG memory engine architecture (Neo4j + Qdrant)
+- [`project_doc.txt`](project_doc.txt) - End-to-end project document (Global Orchestrator specs, DAG engine)
 
 <small>Last updated: August 22, 2026</small>

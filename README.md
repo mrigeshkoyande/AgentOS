@@ -35,12 +35,12 @@ graph TD;
 - **Backend**: FastAPI, SQLite3, Uvicorn, Requests, Asyncio.
 - **Frontend**: Vanilla HTML5, CSS3 (curated dark mode theme), Vanilla ES6 JavaScript (zero external framework dependencies).
 - **Directory Layout**:
-  - [`backend/main.py`](file:///Users/rishabhshevde/My%20Projects/AgentOS/backend/main.py): Monolithic backend service housing API endpoints, SQLite helpers, model routing logic, the mock generator, and the DAG async engine.
-  - [`frontend/index.html`](file:///Users/rishabhshevde/My%20Projects/AgentOS/frontend/index.html): Input interface for submitting project goals and listing existing sessions.
-  - [`frontend/session.html`](file:///Users/rishabhshevde/My%20Projects/AgentOS/frontend/session.html): The primary execution cockpit featuring the WebSocket activity feed, agent detail panels, and SVG org tree.
-  - [`frontend/results.html`](file:///Users/rishabhshevde/My%20Projects/AgentOS/frontend/results.html): Detailed compilation viewer with export actions.
-  - [`frontend/js/`](file:///Users/rishabhshevde/My%20Projects/AgentOS/frontend/js/): Modular frontend drivers (`api.js`, `ws.js`, `orgChart.js`, `agentPanel.js`, `nav.js`).
-  - [`frontend/css/main.css`](file:///Users/rishabhshevde/My%20Projects/AgentOS/frontend/css/main.css): Modern glassmorphism dark-theme stylesheets.
+  - [`backend/main.py`](backend/main.py): Monolithic backend service housing API endpoints, SQLite helpers, model routing logic, the mock generator, and the DAG async engine.
+  - [`frontend/index.html`](frontend/index.html): Input interface for submitting project goals and listing existing sessions.
+  - [`frontend/session.html`](frontend/session.html): The primary execution cockpit featuring the WebSocket activity feed, agent detail panels, and SVG org tree.
+  - [`frontend/results.html`](frontend/results.html): Detailed compilation viewer with export actions.
+  - [`frontend/js/`](frontend/js/): Modular frontend drivers (`api.js`, `ws.js`, `orgChart.js`, `agentPanel.js`, `nav.js`).
+  - [`frontend/css/main.css`](frontend/css/main.css): Modern glassmorphism dark-theme stylesheets.
 
 ---
 
@@ -261,7 +261,7 @@ AgentOS is built with extension points to support the **Antygravity GraphRAG Mem
 - **Semantic Code Vectors (Qdrant)**: Embeds logical code units (methods/classes parsed with Tree-sitter) for vector similarity searches.
 - **Hierarchical Code Summaries**: Resolves token context limitations by abstracting code structures at the function, file, folder, and repository level.
 
-*For deep architectural details, see [`agent.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/agent.md) and [`design.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/design.md).*
+*For deep architectural details, see [`agent.md`](agent.md) and [`design.md`](design.md).*
 
 ---
 

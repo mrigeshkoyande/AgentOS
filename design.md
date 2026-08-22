@@ -214,9 +214,8 @@ Antygravity is optimized for quick feedback loops:
 
 ## 🔗 Related Documentation
 
-- [`README.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/README.md) - Project overview and quick start.
-- [`agent.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/agent.md) - Specs on how agents utilize the memory engine.
-- [`Agents.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/Agents.md) - Agent lifecycle, communication and scheduling.
-- [`Brain.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/Brain.md) - Orchestration brain and synthesis flows.
+- [`README.md`](README.md) - Project overview and quick start.
+- [`agent.md`](agent.md) - Specifications on agent architecture, lifecycle, and memory systems.
+- [`Brain.md`](Brain.md) - Orchestration brain and synthesis flows.
 
 <small>Last updated: August 22, 2026 • Version 1.2.0</small>

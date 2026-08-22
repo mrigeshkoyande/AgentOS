@@ -1,174 +1,436 @@
-# Antygravity Agent Specifications & Memory Architecture
+# 🤖 AgentOS Agent Specifications & Architecture Guide
 
-## 1. Executive Summary
-
-Antygravity is a next-generation AI coding agent specifically engineered to autonomously navigate, comprehend, and edit massive codebases (exceeding 1,000,000 lines of code). 
-
-Traditional LLM coding agents fail when operating on large repositories due to context window limits, token exhaustion, and dilution of query relevance. Antygravity overcomes these constraints by employing a **Graph-Augmented Retrieval-Augmented Generation (GraphRAG)** system. By maintaining a cognitive hierarchy that partitions codebase structural mappings (Neo4j) and semantic chunk vectors (Qdrant), Antygravity surgically builds local, token-optimized context packages (typically < 15,000 tokens) to solve complex coding tasks without loading entire directories into prompt windows.
+> The comprehensive specification for autonomous AI agent workforces, cognitive 4-tier memory systems, inter-agent communication protocols, and GraphRAG execution loops.
 
 ---
 
-## 2. Core Capabilities
+## 1. Executive Summary & Core Capabilities
 
-- **AST-Aware Code Exploration**: Navigates classes, methods, imports, database schemas, and API handlers by traversing code syntax trees rather than using raw string regex searches.
-- **Deep Semantic Association**: Correlates conceptually related files (e.g., matching a React form component to its corresponding backend FastAPI router validation logic) even if they are structurally distant.
-- **Strict Context Budgeting**: Prunes irrelevant information using ranking models, ensuring high-density, low-token input prompts that minimize LLM hallucinations.
-- **Self-Healing Execution Memory**: Logs outcomes of past edits, bug repairs, and feedback loops to prevent regression errors.
+In **AgentOS**, agents are specialized, autonomous AI entities that collaborate in directed acyclic graph (DAG) hierarchies to transform high-level natural language goals into fully articulated business and engineering deliverables. 
+
+Unlike traditional static prompt templates or single-turn coders, AgentOS dynamically infers organizational roles, generates specialized system prompts, assigns optimal LLM models, and establishes multi-agent communication networks. When operating on massive software repositories (>1,000,000 lines of code), AgentOS agents utilize a **Graph-Augmented Retrieval-Augmented Generation (GraphRAG)** memory system to achieve surgical code navigation and token-optimized execution.
+
+```
+                             ┌───────────────────────────────────┐
+                             │       User Natural Language       │
+                             │            Description            │
+                             └─────────────────┬─────────────────┘
+                                               │
+                                               ▼
+                             ┌───────────────────────────────────┐
+                             │   Layer 0 Global Orchestrator     │
+                             └─────────────────┬─────────────────┘
+                                               │
+                       ┌───────────────────────┴───────────────────────┐
+                       ▼                                               ▼
+     ┌───────────────────────────────────┐           ┌───────────────────────────────────┐
+     │      Strategic Agent Layer        │           │    Cognitive 4-Tier Memory        │
+     │   (CEO, CTO, Legal, Compliance)   │           │   (Session, Project, Arch, Exec)  │
+     └─────────────────┬─────────────────┘           └─────────────────┬─────────────────┘
+                       │                                               │
+                       ├───────────────────────┬───────────────────────┤
+                       ▼                       ▼                       ▼
+             ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐
+             │ Inter-Agent Bus   │   │ Model Router &    │   │ Self-Healing      │
+             │ (Q/A Dialogue)    │   │ Overrides         │   │ Verification      │
+             └───────────────────┘   └───────────────────┘   └───────────────────┘
+```
+
+### Core Capabilities
+
+- **Dynamic Organizational Role Inference**: Automatically determines required cross-functional roles (e.g., CEO, CTO, Product Manager, Lead Developer, Legal Counsel) based on domain context.
+- **4-Tier Cognitive Memory Architecture**: Segregates context across immediate session state, structural/semantic project knowledge, long-term architectural constraints, and historical execution experience.
+- **AST-Aware Code Exploration**: Navigates AST syntax trees (Neo4j) combined with vector embeddings (Qdrant) to target exact classes, schemas, and endpoints without token bloat.
+- **Parallel Async DAG Execution**: Groups agents into dependency layers executed concurrently via Python's `asyncio.gather`.
+- **Inter-Agent Message Protocol**: Enables structured `QUESTION_TO` and `ANSWER_TO` dialogue exchanges directly within reasoning cycles.
+- **Self-Healing Verification Loops**: Executes automatic linter/compiler checks and unit test evaluations, recording fix histories to prevent regressions.
+- **Dynamic Model Routing & Overrides**: Assigns the ideal LLM provider per role while allowing runtime user overrides.
 
 ---
 
-## 3. The 4-Tier Memory System
+## 2. 🧬 Agent Lifecycle & State Machine
 
-To replicate the cognitive processes of a senior staff engineer, Antygravity segregates its memory into four distinct layers, each operating on a different timescale and storage medium:
+Every agent in AgentOS undergoes a managed lifecycle within a session execution cycle. The engine monitors transitions, handles blocking questions, enforces timeouts, and streams status updates in real-time.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: Created by Global Orchestrator
+    Pending --> Running: Dependency layer triggers execution
+    Running --> Waiting: Emits QUESTION_TO:[TargetAgent]
+    Waiting --> Running: Receives ANSWER_TO:[SenderAgent]
+    Waiting --> Running: 60s Timeout (Proceeds with safe assumptions)
+    Running --> Done: Task execution completed successfully
+    Running --> Error: Execution exception, API failure, or lint crash
+    Error --> Running: Manual retry or user model override
+    Done --> [*]: Output stored in SQLite & context passed to next layer
+```
+
+### Lifecycle Phases & State Definitions
+
+| State | Description | Triggers & Actions |
+| :--- | :--- | :--- |
+| **`Pending`** | Agent is initialized in the database but waiting for prerequisite dependency layers to finish. | Created during session setup; transitions to `Running` when all parent layer agents enter `Done`. |
+| **`Running`** | Agent is actively generating tokens via its assigned LLM provider. | Evaluates system prompt, memory context, and inputs; streams character-by-character output via WebSocket (`agent_token`). |
+| **`Waiting`** | Agent has paused execution after emitting a `QUESTION_TO:[TargetRole]` query to resolve a dependency ambiguity. | Listens for an `ANSWER_TO` message or resumes automatically after a 60-second safety timeout. |
+| **`Done`** | Task execution completed. Output report is finalized and persisted to `agents.output`. | Output is pushed into the workspace context pool for downstream dependency layers and final synthesis. |
+| **`Error`** | Execution encountered an unhandled exception, API rate limit, or invalid response. | Halts execution for the specific agent; permits manual retry (`POST /api/agents/{id}/retry`) or model override without restarting the full session. |
+
+---
+
+## 3. 👥 Dynamic Role Generation & Prompt Engineering
+
+### Role Inference Matrix
+
+When a user submits a prompt, the **Global Orchestrator** (Layer 0 AI) infers the necessary cross-functional organizational structure.
+
+| User Domain Keywords | Generated Agent Workforce | Key Objectives & Responsibilities |
+| :--- | :--- | :--- |
+| **Fintech / Payments** | CEO, CTO, Legal Counsel, Compliance Officer, Finance Lead | Security standards (PCI-DSS), ledger architecture, regulatory risk, unit economics. |
+| **SaaS / Enterprise Platform** | CEO, CTO, Product Manager, Lead Developer, Customer Success | Multi-tenant backend, API design, subscription tiers, SLA guarantees. |
+| **Healthcare / HealthTech** | CEO, CTO, HIPAA Specialist, Operations Lead, Research Lead | HIPAA compliance, data privacy, EHR integrations, clinical workflow safety. |
+| **E-Commerce / Retail** | CEO, CTO, Chief Product Officer, Marketing Lead, Supply Chain | Inventory engine, cart/checkout flows, acquisition funnels, logistics. |
+| **Gaming / Metaverse** | CEO, CTO, Game Designer, Lead Developer, Community Lead | Multi-player architecture, economy balancing, asset pipelines, user engagement. |
+
+### Agent Database Entity Schema (`agents`)
+
+Agent definitions are stored in the SQLite `agents` table:
+
+```sql
+CREATE TABLE agents (
+    id TEXT PRIMARY KEY,           -- Format: agent_uuid
+    session_id TEXT NOT NULL,      -- Foreign key to sessions(id)
+    role TEXT NOT NULL,            -- Functional title (e.g., "CTO", "Lead Developer")
+    display_name TEXT NOT NULL,    -- Label (e.g., "Alex Chen - CTO")
+    model TEXT NOT NULL,           -- Assigned default LLM identifier
+    model_override TEXT,           -- User-selected model override (if set)
+    system_prompt TEXT NOT NULL,   -- Persona instructions + constraints
+    task TEXT NOT NULL,            -- Assigned objective
+    layer INTEGER NOT NULL,        -- DAG execution depth (0 = Strategist, 1+ = Dependent)
+    status TEXT NOT NULL,          -- State: pending | running | waiting | done | error
+    output TEXT,                   -- Markdown result payload
+    created_at TEXT NOT NULL,      -- Creation timestamp
+    completed_at TEXT              -- Completion timestamp
+);
+```
+
+### System Prompt Engineering Formula
+
+Each agent system prompt is dynamically assembled using four core components:
+
+$$\text{System Prompt} = \text{Persona Identity} + \text{Domain Expertise} + \text{Architectural Constraints} + \text{Output Schema Rules}$$
+
+```markdown
+You are the [Role, e.g., Chief Technology Officer] of an innovative software organization.
+
+=== RESPONSIBILITIES ===
+- Define technical architecture and tech stack parameters.
+- Ensure scalability, maintainability, and security compliance.
+
+=== CONSTRAINTS ===
+- Do not introduce unvetted third-party dependencies.
+- Follow established architectural memory guidelines.
+
+=== COMMUNICATION PROTOCOL ===
+- If you require information from another role, output:
+  QUESTION_TO:[Role]Your specific question here...END_QUESTION
+- When answering a question, output:
+  ANSWER_TO:[Role]Your answer details...END_ANSWER
+```
+
+---
+
+## 4. 🧠 The 4-Tier Cognitive Memory Architecture
+
+To replicate the memory management of senior staff engineers, AgentOS structures memory into four distinct layers operating across different timescales:
 
 ```
   ┌────────────────────────────────────────────────────────┐
-  │              3.1 Session Memory (Short-Term)           │
-  │  - Context: Active files, terminal log, active task    │
+  │              4.1 Session Memory (Short-Term)           │
+  │  - Active user instruction, open file handles, checklist│
   │  - Storage: Redis / Fastify In-Memory State            │
   └──────────────────────────┬─────────────────────────────┘
                              ▼
   ┌────────────────────────────────────────────────────────┐
-  │              3.2 Project Memory (Mid-Term)             │
-  │  - Context: AST Node graph & Semantic chunk embeddings │
+  │              4.2 Project Memory (Mid-Term)             │
+  │  - AST Graph (Neo4j) & Semantic Vector Embeddings      │
   │  - Storage: Neo4j (Structural) + Qdrant (Semantic)     │
   └──────────────────────────┬─────────────────────────────┘
                              ▼
   ┌────────────────────────────────────────────────────────┐
-  │           3.3 Architectural Memory (Long-Term)         │
-  │  - Context: Style guides, design limits, frameworks    │
-  │  - Storage: Persistent JSON Cache / SQLite tables      │
+  │           4.3 Architectural Memory (Long-Term)         │
+  │  - Team conventions, design patterns, security rules   │
+  │  - Storage: Persistent SQLite / Configuration Rules    │
   └──────────────────────────┬─────────────────────────────┘
                              ▼
   ┌────────────────────────────────────────────────────────┐
-  │            3.4 Execution Memory (Experience)           │
-  │  - Context: Past edits, fixed bugs, PR history logs    │
-  │  - Storage: Graph relationship nodes in Neo4j          │
+  │            4.4 Execution Memory (Experience)           │
+  │  - Commit history, past bug repairs, performance logs  │
+  │  - Storage: Neo4j Transaction Graph Nodes              │
   └────────────────────────────────────────────────────────┘
 ```
 
-### 3.1. Session Memory (Short-Term)
-- **Purpose**: Tracks immediate conversational state and the active execution step.
-- **Contents**:
-  - The active user instruction (e.g., *"Add authentication to the `/users/export` endpoint"*).
-  - List of active file handles currently open in the IDE workspace.
-  - Recent compiler errors, lint issues, and test execution outputs.
-  - The step-by-step execution task checklist (`task.md`).
-- **Storage**: In-memory state (Fastify/Redis cache). Destroyed or archived upon session closure.
+### 4.1 Session Memory (Short-Term)
+- **Scope**: Current conversational context and active execution step.
+- **Contents**: User task prompt, open IDE workspace buffers, terminal execution logs, active task checklist (`task.md`).
+- **Storage**: Fastify/Redis in-memory store. Cleared or archived upon session completion.
 
-### 3.2. Project Memory (Mid-Term)
-- **Purpose**: Codebase structure and semantic understanding.
+### 4.2 Project Memory (Mid-Term)
+- **Scope**: Repository-wide codebase comprehension for 1M+ LOC codebases.
 - **Contents**:
-  - **Structural Sub-Layer**: Complete Abstract Syntax Tree (AST) entity maps. Nodes represent files, classes, methods, endpoints, database schemas, and global configuration values.
-  - **Semantic Sub-Layer**: High-dimensional vector embeddings of individual code fragments (functions, type definitions) with associated AST metadata.
-- **Storage**: 
-  - Structural data: **Neo4j** graph database.
-  - Semantic vectors: **Qdrant** vector store.
+  - **Structural Sub-Layer (Neo4j Graph)**: AST nodes representing files, classes, methods, endpoints, database schemas, and relationships (`[:CALLS]`, `[:IMPORTS]`, `[:IMPLEMENTS]`).
+  - **Semantic Sub-Layer (Qdrant Vector Store)**: High-dimensional embeddings of parsed code units and docstrings.
+- **Retrieval Engine**: 6-step GraphRAG retrieval pipeline producing token budgets $< 15,000$ tokens.
 
-### 3.3. Architectural Memory (Long-Term)
-- **Purpose**: Encodes team-wide design conventions, patterns, and absolute constraints.
-- **Contents**:
-  - Technical guidelines: *"We use vanilla CSS for component styles; do not write Tailwind classes."*
-  - Data access patterns: *"All database actions must route through the Repository layer."*
-  - Security policies: *"Never implement custom crypto; always use the `CryptographyHelper` utility."*
-- **Storage**: Relational rows in SQLite or persistent JSON configuration rules.
+### 4.3 Architectural Memory (Long-Term)
+- **Scope**: Organizational standards, forbidden anti-patterns, and core architecture rules.
+- **Contents**: Coding conventions (*"Use vanilla CSS, no Tailwind"*), access rules (*"All queries must go through the Repository layer"*), security mandates (*"No custom cryptography"*).
+- **Storage**: SQLite configuration tables and persistent JSON rule vectors.
 
-### 3.4. Execution Memory (Experience)
-- **Purpose**: Chronological log of previous adjustments and their downstream impacts.
-- **Contents**:
-  - Historical changes: *"In session sess_a3d2, we attempted to use UUIDs for session primary keys in SQLite, which caused a 40% performance degradation. Reverted to auto-incrementing integers."*
-  - Bug fixes: Record of modified files linked to past errors to avoid introducing regressions.
-- **Storage**: Neo4j event-link nodes connecting modified files to transaction-log elements.
+### 4.4 Execution Memory (Experience Layer)
+- **Scope**: Historical log of past modifications, fixed bugs, and performance impact traces.
+- **Contents**: Modified files linked to past GitHub issues/PRs, anti-patterns that failed testing, performance regression warnings.
+- **Storage**: Neo4j transaction graph nodes connecting code entities to historical execution events.
 
 ---
 
-## 4. Agent Reasoning: Inbound Query Pipeline
+## 5. 🔍 The 6-Step GraphRAG Retrieval Engine
 
-When the AgentOS Lead Developer agent receives a command: *"Implement password reset validation in our registration flow,"* it runs the following pipeline:
+When an agent executes code generation or analysis, AgentOS runs the GraphRAG pipeline to construct high-density, low-token prompts.
 
 ```mermaid
-graph TD;
-    Inbound[1. Inbound Command] --> Parse[2. Intent Parsing];
-    Parse --> GraphQuery[3. Neo4j Graph Lookup];
-    GraphQuery --> Expansion[4. Neighborhood Expansion];
-    Expansion --> VectorQuery[5. Qdrant Semantic Search];
-    VectorQuery --> Assemble[6. Context Assembly];
-    Assemble --> Prompt[7. Prompt Injection];
-    Prompt --> LLM[8. LLM Inference];
+sequenceDiagram
+    autonumber
+    participant Agent as Agent Execution Engine
+    participant GraphRAG as GraphRAG Controller
+    participant Neo4j as Neo4j (AST Graph)
+    participant Qdrant as Qdrant (Vector Engine)
+    participant Ranker as Cross-Encoder Ranker
+
+    Agent->>GraphRAG: Submit Query ("Validate authentication token")
+    GraphRAG->>Neo4j: 1. Search Entry Points (Find function/class nodes)
+    Neo4j-->>GraphRAG: Return candidate entry points (e.g., AuthMiddleware)
+    GraphRAG->>Neo4j: 2. 2-Hop Neighborhood Traversal
+    Neo4j-->>GraphRAG: Return callers, imports, schemas
+    GraphRAG->>Qdrant: 3. Vector Similarity Search
+    Qdrant-->>GraphRAG: Return semantically related code chunks
+    GraphRAG->>GraphRAG: 4. Fetch Hierarchical Summaries
+    GraphRAG->>Ranker: 5. Relevance Scoring
+    Ranker-->>GraphRAG: Rank context chunks by relevance
+    GraphRAG->>GraphRAG: 6. Token Budgeting (Slice to < 15,000 tokens)
+    GraphRAG-->>Agent: Injected Context Package
 ```
 
-### 4.1. Step-by-Step Walkthrough
+### Step Breakdown
 
-1. **Intent Parsing**: Extracts key semantic targets (e.g., `password reset`, `validation`, `registration`).
-2. **Graph Lookup**: Queries Neo4j for entry point nodes matching the targets:
+1. **Search Graph Entry Points**: Scans Neo4j for target symbols using exact, fuzzy, or AST-based matching.
    ```cypher
-   MATCH (f:Function) WHERE f.name CONTAINS "register" OR f.name CONTAINS "validate"
-   RETURN f.name, f.filePath
+   MATCH (f:Function) WHERE f.name CONTAINS "validateToken" OR f.name CONTAINS "auth"
+   RETURN f.name, f.filePath, f.startLine
    ```
-3. **Neighborhood Expansion**: Performs a 2-hop traversal to retrieve dependent nodes:
-   - Caller functions: `[:CALLS]`
-   - Module imports: `[:IMPORTS]`
-   - Implemented schemas: `[:IMPLEMENTS]`
-4. **Semantic Search**: Queries Qdrant using similarity matching for conceptually aligned utilities (e.g., password hashing rules) across the repository.
-5. **Context Assembly**: Consolidates the retrieved fragments. It replaces complete 5,000-line source files with focused code snippets (e.g., the 40-line `validateUser` function and the schema file).
-6. **Prompt Injection**: Injects the assembled context into the predefined prompt template.
+2. **2-Hop Neighborhood Traversal**: Expands out 2 hops along structural graph edges (`[:CALLS]`, `[:IMPORTS]`, `[:IMPLEMENTS]`, `[:CONTAINS]`) to collect dependent context.
+3. **Vector Similarity Search**: Queries Qdrant for conceptually aligned components (e.g., matching frontend OAuth handler to backend JWT validator).
+4. **Fetch Hierarchical Summaries**: Pulls module-level and directory-level summaries to maintain global awareness.
+5. **Relevance Ranking**: Scores retrieved items using a Cross-Encoder ranking model.
+6. **Token Budgeting**: Slices context payload to strictly fit within the target token ceiling ($10,000 - 15,000$ tokens).
 
 ---
 
-## 5. Prompt Injection Template
+## 6. ⚙️ Model Selection, Dynamic Routing & Fallbacks
 
-This template illustrates how the 4-tier memory is injected into the LLM system prompt:
+### Model Assignment Matrix
+
+The Global Orchestrator assigns default models based on role characteristics:
+
+| LLM Provider & Model | Best Suited Roles | Key Strengths & Selection Justification |
+| :--- | :--- | :--- |
+| **Kimi K2 (NVIDIA NIM)** | CEO, CTO, Software Architect, Data Analyst | Superior strategic reasoning, deep contextual structuring, long-range planning. |
+| **Gemini 1.5 Pro (Google)** | Frontend Lead, UX Designer, Marketing Director | Multimodal capabilities, creative writing, massive context window (2M tokens). |
+| **GPT-4o (OpenAI)** | Legal Counsel, Compliance, Finance Lead | Precise logic, regulatory accuracy, low hallucination rate on structured rules. |
+| **Claude 3.5 Sonnet (Anthropic)** | QA Engineer, Security Auditor, Code Reviewer | Analytical rigor, code syntax precision, strict instruction adherence. |
+| **Llama 3.1 70B (NVIDIA / Local)** | Backend Lead, DevOps Engineer, Database Admin | High execution throughput, cost efficiency, structured JSON & code generation. |
+
+### Dynamic Model Router Implementation
+
+```python
+def select_model(role: str, user_override: str = None) -> str:
+    """
+    Selects the optimal LLM for an agent role, prioritizing explicit user overrides.
+    """
+    if user_override:
+        return user_override
+
+    role_clean = role.lower().strip()
+    
+    ROLE_MAP = {
+        "frontend": "gemini-1.5-pro",
+        "design": "gemini-1.5-pro",
+        "marketing": "gemini-1.5-pro",
+        "backend": "llama-3.1-70b",
+        "devops": "llama-3.1-70b",
+        "database": "llama-3.1-70b",
+        "strategy": "kimi-k2",
+        "architect": "kimi-k2",
+        "ceo": "kimi-k2",
+        "cto": "kimi-k2",
+        "legal": "gpt-4o",
+        "compliance": "gpt-4o",
+        "finance": "gpt-4o",
+        "qa": "claude-3.5-sonnet",
+        "security": "claude-3.5-sonnet",
+        "review": "claude-3.5-sonnet"
+    }
+
+    for key, model in ROLE_MAP.items():
+        if key in role_clean:
+            return model
+            
+    return "kimi-k2"  # Default fallback model
+```
+
+---
+
+## 7. 🔗 Inter-Agent Communication Protocol
+
+Agents communicate asynchronously via a structured messaging bus persisted in SQLite.
+
+```
+[Agent A: CEO] ──► Output: "QUESTION_TO:[CTO] What is our target database latency ceiling? END_QUESTION"
+                         │
+                         ▼
+             [Message Bus parses & stores in `messages`]
+                         │
+                         ▼
+[Agent B: CTO] ──► Input Injected: "Re: target database latency — P99 latency must be under 50ms."
+```
+
+### Communication Rules
+
+1. **Syntax Markers**:
+   - `QUESTION_TO:[TargetRole] <Question Text> END_QUESTION`
+   - `ANSWER_TO:[TargetRole] <Answer Text> END_ANSWER`
+2. **Loop Prevention**: Maximum of **3 question iterations** per agent per session.
+3. **Timeout Rule**: If a requested agent does not answer within **60 seconds**, the waiting agent resumes execution using default domain assumptions.
+4. **Circular Dependency Guard**: The DAG engine rejects circular dependencies ($A \rightarrow B$ and $B \rightarrow A$).
+5. **Real-Time Visibility**: All inter-agent messages trigger WebSocket broadcasts (`agent_message`) to the frontend activity feed.
+
+---
+
+## 8. 📝 System Prompt Injection Template
+
+This template illustrates how all 4 memory tiers, system rules, graph context, and active goals are injected into the agent prompt window:
 
 ```markdown
-You are an expert AI software developer agent executing a task in a large codebase.
+You are an expert AI software developer executing a task in a enterprise codebase.
 
-=== 1. SYSTEM CONSTRAINTS (ARCHITECTURAL MEMORY) ===
-- All database queries must run through the Repository layer.
-- Do not add third-party dependencies unless explicitly approved.
-- Use async/await syntax for all server communication.
+=== 1. ARCHITECTURAL MEMORY (CONSTRAINTS) ===
+- All DB queries must be routed through the Repository pattern layer.
+- CSS must use vanilla custom properties; external utility frameworks are forbidden.
+- Asynchronous calls must use standard async/await syntax.
 
-=== 2. WORKSPACE CONTEXT (PROJECT MEMORY) ===
-Files under review:
-[file: /backend/models/user.py]
+=== 2. PROJECT MEMORY (GraphRAG RETRIEVED CONTEXT) ===
+Target File: [/backend/models/user.py]
 ```python
-class UserRegistrationDTO(BaseModel):
-    email: str
-    password: str
+class UserDTO(BaseModel):
+    email: EmailStr
+    password_hash: str
 ```
 
-Related methods discovered via GraphRAG:
+Retrieved Dependent Symbols (AST Graph):
 ```python
-def validate_password_complexity(pwd: str) -> bool:
-    return len(pwd) >= 8 and any(c.isdigit() for c in pwd)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 ```
 
-=== 3. PAST EXECUTION LOGS (EXECUTION MEMORY) ===
-- Session sess_8d3e: Modified UserRegistrationDTO to add email format validation.
-- Session sess_9f2a: Fixed issue where password complexity was bypassed in mobile registration.
+=== 3. EXECUTION MEMORY (EXPERIENCE LOGS) ===
+- Session sess_8d3e: Added email validation regex to UserDTO.
+- Session sess_9f2a: Resolved password hash verification failure on OAuth logins.
 
-=== 4. CURRENT GOAL (SESSION MEMORY) ===
-Active Task: Add password strength validation to the registration controller.
-Workspace Open Files: [/backend/controllers/auth.py]
+=== 4. SESSION MEMORY & ACTIVE GOAL ===
+Active Goal: Implement password strength validation on user registration endpoint.
+Open Workspace Files: [/backend/controllers/auth.py]
 
-Please write the code changes in diff format.
+Respond with code modifications in diff format.
 ```
 
 ---
 
-## 6. Self-Healing loops
+## 9. 🛠️ Self-Healing Loops & Verification
 
-After executing code modifications, Antygravity triggers self-healing verification:
-- **Lint/Compile Check**: Runs linter and compiler against modified files. If an error is returned, the compiler log is injected into the **Session Memory**, and the agent attempts to fix the error.
-- **Unit Test Evaluation**: Spawns test suites related to the changed files.
-- **Experience Logging**: If the tests pass, the action is marked as successful and logged to the **Execution Memory** (Experience Layer) for future context. If the test fails repeatedly, the failure pattern is logged as a caution node to warn future agents against attempting the same implementation path.
+After generating or modifying code, AgentOS triggers self-healing execution checks:
+
+```
+    ┌───────────────────────────┐
+    │  Agent Generates Code     │
+    └─────────────┬─────────────┘
+                  │
+                  ▼
+    ┌───────────────────────────┐
+    │  Linter & Compiler Check  │ ──► [Fail] ──► Inject Error Stack Trace into
+    └─────────────┬─────────────┘                Session Memory & Re-run
+                  │ [Pass]
+                  ▼
+    ┌───────────────────────────┐
+    │  Automated Unit Testing   │ ──► [Fail] ──► Log Test Failure to Session
+    └─────────────┬─────────────┘                Memory for Self-Correction
+                  │ [Pass]
+                  ▼
+    ┌───────────────────────────┐
+    │ Log Success to Execution  │
+    │ Memory (Experience Layer) │
+    └───────────────────────────┘
+```
+
+1. **Lint & Compiler Checks**: Runs environment linters (`flake8`, `tsc`, `eslint`). If errors are encountered, stack trace logs are injected into **Session Memory** for immediate remediation.
+2. **Unit Test Evaluation**: Spawns isolated test runners (`pytest`, `vitest`) targeting affected files.
+3. **Experience Graph Update**: Successful fixes create positive reinforcement nodes in Neo4j Execution Memory. Persistent failures tag anti-pattern nodes to prevent future agents from repeating identical code paths.
+
+---
+
+## 10. 🔌 API Endpoints & Real-Time Communication
+
+### REST API Reference
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/sessions/{session_id}/agents` | `GET` | Retrieves all agents, their assigned models, status, and outputs for a session. |
+| `/api/agents/{agent_id}/model` | `PATCH` | Updates an agent's model override (`{"model": "gpt-4o"}`). |
+| `/api/agents/{agent_id}/retry` | `POST` | Resets an agent status from `error` to `pending` and re-executes its layer. |
+
+### WebSocket Event Stream
+
+Frontend clients connect to `ws://localhost:8000/ws/{session_id}` to receive real-time updates:
+
+```json
+// Agent execution started
+{ "type": "agent_started", "agent_id": "agent_123", "role": "CTO" }
+
+// Real-time token streaming fragment
+{ "type": "agent_token", "agent_id": "agent_123", "token": "Building system architecture..." }
+
+// Inter-agent message broadcast
+{ "type": "agent_message", "from": "CEO", "to": "CTO", "content": "QUESTION_TO:[CTO]..." }
+
+// Agent execution completed
+{ "type": "agent_done", "agent_id": "agent_123", "output": "# Final Output..." }
+```
+
+---
+
+## 🎯 Best Practices for Agent Deployment
+
+1. **Role Clarity**: Provide explicit, domain-rich project descriptions. Clear prompts yield highly specialized agent roles.
+2. **Model Optimization**: Reserve high-reasoning models (Kimi K2, GPT-4o) for strategic roles (CEO, CTO, Legal) and high-throughput models (Llama 3.1, Gemini) for code and UI generation.
+3. **Context Hygiene**: Avoid injecting full raw source files; rely on GraphRAG to keep context windows focused ($<15,000$ tokens).
+4. **Session Resumption**: Leverage model overrides to selectively re-run specific agents without restarting an entire multi-agent DAG pipeline.
 
 ---
 
 ## 🔗 Related Documentation
 
-- [`README.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/README.md) - Project overview and quick start.
-- [`design.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/design.md) - Deep dive into GraphRAG engineering (Neo4j & Qdrant configurations).
-- [`Agents.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/Agents.md) - Agent lifecycle, roles, and communication protocols.
-- [`Brain.md`](file:///Users/rishabhshevde/My%20Projects/AgentOS/Brain.md) - Core backend brain execution architecture.
+- [`README.md`](README.md) — Project overview, installation, and quick start guide.
+- [`Brain.md`](Brain.md) — Architectural overview of the Global Orchestrator & DAG Execution Engine.
+- [`design.md`](design.md) — Deep dive into Neo4j & Qdrant GraphRAG engineering specifications.
 
-<small>Last updated: August 22, 2026 • Version 1.2.0</small>
+---
+
+<small>Last updated: August 22, 2026 • AgentOS Version 1.2.0</small>
