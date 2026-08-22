@@ -46,7 +46,11 @@ app.add_middleware(
 )
 
 from routes.decisions import router as decisions_router
+from routes.tasks import router as tasks_router
+from routes.analytics import router as analytics_router
 app.include_router(decisions_router)
+app.include_router(tasks_router)
+app.include_router(analytics_router)
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -152,6 +156,36 @@ def init_db():
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )
     """)
+    
+    # agent_registry
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS agent_registry (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        capabilities TEXT NOT NULL, -- JSON list
+        tools TEXT, -- JSON list
+        model TEXT,
+        cubicle TEXT,
+        status TEXT DEFAULT 'IDLE',
+        enabled INTEGER DEFAULT 1,
+        tasks_completed INTEGER DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
+        execution_time_sum INTEGER DEFAULT 0
+    )
+    """)
+    
+    # Pre-populate default office agents
+    default_agents = [
+        ("agent-m", "Agent M", "Marketing & Creative Specialist", '["marketing", "management", "creative", "synthesis", "analysis"]', '[]', 'gemini-1.5-flash', 'M'),
+        ("agent-a", "Agent A", "Analytics & Automation Specialist", '["analytics", "automation", "code", "api", "logic"]', '[]', 'gemini-1.5-flash', 'A'),
+        ("agent-s", "Agent S", "Search & Support Specialist", '["search", "retrieval", "scraping", "support", "text-transformation"]', '[]', 'gemini-1.5-flash', 'S')
+    ]
+    for agent in default_agents:
+        cursor.execute(
+            "INSERT OR IGNORE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            agent
+        )
     
     conn.commit()
     conn.close()

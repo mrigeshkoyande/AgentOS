@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from typing import List, Optional
 from schemas.decision import (
     DecisionCreate, DecisionUpdate, Decision,
@@ -11,6 +11,7 @@ from schemas.decision import (
 )
 from services.decision_service import DecisionService
 from repositories.decision_repository import DecisionRepository
+from services.negotiation.negotiation_engine import NegotiationEngine
 
 router = APIRouter(prefix="/api", tags=["decisions"])
 service = DecisionService()
@@ -315,9 +316,8 @@ def delete_option(id: str):
 # --- Execution & Approvals ---
 
 @router.post("/decisions/{id}/start", response_model=dict)
-async def start_decision(id: str):
+async def start_decision(id: str, background_tasks: BackgroundTasks):
     try:
-        # Move state sequentially: DRAFT -> SETUP -> READY -> RUNNING
         dec = repo.get_decision(id)
         if not dec:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
@@ -328,37 +328,12 @@ async def start_decision(id: str):
             current = "SETUP"
         if current == "SETUP":
             await service.update_status(id, "READY")
-            current = "READY"
-        if current == "READY":
-            await service.update_status(id, "RUNNING")
             
-        # Simulate quick execution transition to NEGOTIATING -> AWAITING_APPROVAL
-        await service.update_status(id, "NEGOTIATING")
+        # Trigger actual agent-based negotiation in background
+        negotiation_engine = NegotiationEngine()
+        background_tasks.add_task(negotiation_engine.execute_negotiation, id)
         
-        # Insert a default negotiation round for tracking
-        repo.add_negotiation_round(
-            decision_id=id,
-            round_number=1,
-            proposal="Standard Proposal incorporating all preferences and soft constraints"
-        )
-        
-        # Transition to AWAITING_APPROVAL (or COMPLETED if approval not required)
-        next_state = "AWAITING_APPROVAL" if dec["approval_required"] else "COMPLETED"
-        await service.update_status(id, next_state)
-        
-        # If approval is not required, insert mock outcome
-        if not dec["approval_required"]:
-            options = dec.get("options", [])
-            selected = options[0]["name"] if options else "Option A"
-            repo.add_outcome(
-                decision_id=id,
-                selected_option=selected,
-                consensus_score=0.9,
-                rationale="Automated execution select consensus based on weights and constraint checks.",
-                tradeoffs="Cost vs time tradeoff balanced."
-            )
-            
-        return {"status": "success", "message": f"Decision workflow initiated, current status: {next_state}"}
+        return {"status": "success", "message": "Decision negotiation initiated in the background."}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
