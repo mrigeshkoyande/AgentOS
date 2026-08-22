@@ -14,6 +14,8 @@ except ImportError:
         get_db = None
 
 from repositories.decision_repository import DecisionRepository
+from services.decision.consensus_engine import ConsensusEngine
+from services.negotiation.negotiation_engine import NegotiationEngine
 
 logger = logging.getLogger("decision_service")
 
@@ -221,9 +223,33 @@ class DecisionService:
                     "description": o.get("description", "")
                 })
 
-        # Run simulation logic to generate mock outputs
-        selected_option = sim["options"][0]["name"] if sim["options"] else "Option A"
-        consensus_score = 0.85
+        # Run simulation logic dynamically using deterministic engines
+        consensus_engine = ConsensusEngine()
+        
+        feasible_sims = []
+        infeasible_sims = []
+        
+        for o in sim["options"]:
+            o_attrs = NegotiationEngine.extract_attributes(o)
+            eval_res = consensus_engine.evaluate_proposal(sim, o_attrs)
+            if eval_res["is_feasible"]:
+                feasible_sims.append((o, eval_res))
+            else:
+                infeasible_sims.append((o, eval_res))
+
+        if feasible_sims:
+            # Sort by consensus score descending
+            feasible_sims.sort(key=lambda x: x[1]["consensus_score"], reverse=True)
+            best_opt, best_eval = feasible_sims[0]
+            selected_option = best_opt["name"]
+            consensus_score = best_eval["consensus_score"]
+            violations = best_eval["violations"]
+            stk_scores = best_eval["stakeholder_scores"]
+        else:
+            selected_option = "None - Infeasible"
+            consensus_score = 0.0
+            violations = ["All options violate hard constraints in this simulation configuration."]
+            stk_scores = {s["id"]: 0.0 for s in sim.get("stakeholders", [])}
         
         # Generate simulation round
         sim["negotiation_rounds"] = [{
@@ -231,9 +257,9 @@ class DecisionService:
             "decision_id": sim["id"],
             "round_number": 1,
             "status": "completed",
-            "proposal": f"Proposal matching simulated constraints and preferences",
+            "proposal": selected_option,
             "counter_proposal": None,
-            "reason": "Perfect match for simulated requirements",
+            "reason": "Simulation evaluation using constraint engine.",
             "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "completed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         }]
@@ -244,9 +270,9 @@ class DecisionService:
             "decision_id": sim["id"],
             "selected_option": selected_option,
             "consensus_score": consensus_score,
-            "rationale": f"Simulation outcome selecting {selected_option} with {consensus_score*100}% consensus.",
+            "rationale": f"Simulation selecting {selected_option} with {consensus_score*100}% consensus. Violations: {violations}",
             "tradeoffs": "Tradeoff between cost efficiency and implementation duration.",
-            "dissent": "Minor dissent from secondary contributors.",
+            "dissent": "Calculated stakeholder satisfaction scores: " + str(stk_scores),
             "next_actions": "1. Deploy simulation configuration.\n2. Finalize production specifications.",
             "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         }
