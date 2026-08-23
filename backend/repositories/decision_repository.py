@@ -714,6 +714,10 @@ class DecisionRepository:
     def create_task(self, session_id: str, prompt: str) -> str:
         conn = get_db()
         cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO sessions (id, description, status) VALUES (?, 'SPARK Session', 'active')",
+            (session_id,)
+        )
         task_id = f"task_{uuid.uuid4().hex[:10]}"
         cursor.execute(
             "INSERT INTO tasks (id, session_id, prompt, status) VALUES (?, ?, ?, 'RECEIVED')",

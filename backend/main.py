@@ -45,42 +45,14 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+from websocket_manager import manager
+
 from routes.decisions import router as decisions_router
 from routes.tasks import router as tasks_router
 from routes.analytics import router as analytics_router
 app.include_router(decisions_router)
 app.include_router(tasks_router)
 app.include_router(analytics_router)
-
-# WebSocket Connection Manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-
-    async def connect(self, session_id: str, websocket: WebSocket):
-        await websocket.accept()
-        if session_id not in self.active_connections:
-            self.active_connections[session_id] = []
-        self.active_connections[session_id].append(websocket)
-        logger.info(f"WebSocket connected for session: {session_id}")
-
-    def disconnect(self, session_id: str, websocket: WebSocket):
-        if session_id in self.active_connections:
-            if websocket in self.active_connections[session_id]:
-                self.active_connections[session_id].remove(websocket)
-            if not self.active_connections[session_id]:
-                del self.active_connections[session_id]
-        logger.info(f"WebSocket disconnected for session: {session_id}")
-
-    async def broadcast(self, session_id: str, message: dict):
-        if session_id in self.active_connections:
-            for connection in self.active_connections[session_id]:
-                try:
-                    await connection.send_json(message)
-                except Exception as e:
-                    logger.error(f"Error sending ws message: {e}")
-
-manager = ConnectionManager()
 
 # Helper to get DB connection
 def get_db():
@@ -177,13 +149,15 @@ def init_db():
     
     # Pre-populate default office agents
     default_agents = [
-        ("agent-m", "Agent M", "Marketing & Creative Specialist", '["marketing", "management", "creative", "synthesis", "analysis"]', '[]', 'gemini-1.5-flash', 'M'),
-        ("agent-a", "Agent A", "Analytics & Automation Specialist", '["analytics", "automation", "code", "api", "logic"]', '[]', 'gemini-1.5-flash', 'A'),
-        ("agent-s", "Agent S", "Search & Support Specialist", '["search", "retrieval", "scraping", "support", "text-transformation"]', '[]', 'gemini-1.5-flash', 'S')
+        ("agent-s", "Sammo", "Search Specialist", '["research", "search", "lookup", "source", "external", "extract", "evidence", "find"]', '["retrieval", "source scan", "text extraction"]', 'gemini-1.5-flash', 'S'),
+        ("agent-p", "Paro", "Creative Strategist", '["marketing", "strategy", "campaign", "brand", "business", "creative", "launch", "growth"]', '["brief synthesis", "positioning", "campaign map"]', 'gemini-1.5-flash', 'P'),
+        ("agent-a", "Amo", "Analytics Engineer", '["code", "api", "automation", "debug", "technical", "logic", "build", "backend"]', '["code plan", "debugger", "automation"]', 'gemini-1.5-flash', 'A'),
+        ("agent-r", "Repo", "Content Creator", '["write", "caption", "script", "copy", "story", "communication", "post", "email"]', '["copy draft", "tone pass", "storyline"]', 'gemini-1.5-flash', 'R'),
+        ("agent-k", "Kmailo", "Data Analyst", '["data", "analysis", "pattern", "summary", "compare", "report", "metrics", "insight"]', '["metrics scan", "pattern model", "report builder"]', 'gemini-1.5-flash', 'K')
     ]
     for agent in default_agents:
         cursor.execute(
-            "INSERT OR IGNORE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
             agent
         )
     
@@ -641,13 +615,21 @@ def override_model(agent_id: str, payload: ModelOverride):
     cursor.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
     agent = cursor.fetchone()
     if not agent:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Agent not found")
+        cursor.execute("SELECT * FROM agents WHERE id LIKE ? OR name LIKE ?", (f"%{agent_id}%", f"%{agent_id}%"))
+        agent = cursor.fetchone()
         
-    cursor.execute(
-        "UPDATE agents SET model = ?, model_override = ? WHERE id = ?",
-        (payload.model, payload.model, agent_id)
-    )
+    if agent:
+        real_id = agent["id"]
+        cursor.execute(
+            "UPDATE agents SET model = ?, model_override = ? WHERE id = ?",
+            (payload.model, payload.model, real_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT OR REPLACE INTO agents (id, session_id, name, role, model, model_override, system_prompt, status) "
+            "VALUES (?, 'spark_default_session', ?, ?, ?, ?, '', 'IDLE')",
+            (agent_id, f"Agent {agent_id.upper()}", f"Specialist {agent_id.upper()}", payload.model, payload.model)
+        )
     conn.commit()
     conn.close()
     return {"status": "success", "agent_id": agent_id, "model": payload.model}

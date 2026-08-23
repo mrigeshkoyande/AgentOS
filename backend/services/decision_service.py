@@ -5,12 +5,19 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 
 try:
-    from main import manager, get_db
+    from websocket_manager import manager
 except ImportError:
     try:
-        from backend.main import manager, get_db
+        from backend.websocket_manager import manager
     except ImportError:
         manager = None
+
+try:
+    from main import get_db
+except ImportError:
+    try:
+        from backend.main import get_db
+    except ImportError:
         get_db = None
 
 from repositories.decision_repository import DecisionRepository

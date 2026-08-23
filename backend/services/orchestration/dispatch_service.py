@@ -6,12 +6,19 @@ from typing import Dict, Any, List, Optional
 import os
 
 try:
-    from main import manager, call_gemini
+    from websocket_manager import manager
 except ImportError:
     try:
-        from backend.main import manager, call_gemini
+        from backend.websocket_manager import manager
     except ImportError:
         manager = None
+
+try:
+    from main import call_gemini
+except ImportError:
+    try:
+        from backend.main import call_gemini
+    except ImportError:
         call_gemini = None
 
 from repositories.decision_repository import DecisionRepository
@@ -20,11 +27,14 @@ from services.orchestration.agent_router import AgentRouter
 
 logger = logging.getLogger("dispatch_service")
 
-# Coordinator Waypoints for office cubicles
+# Coordinator Waypoints for office cubicles (0-100% coordinates matching frontend isometric layout)
 CUBICLE_COORDINATES = {
-    "M": [[120, 540], [250, 540], [250, 300], [480, 300]],
-    "A": [[120, 540], [250, 540], [250, 200], [400, 200]],
-    "S": [[120, 540], [250, 540], [250, 400], [560, 400]]
+    "S": [[27, 92], [30, 86], [65.2, 86], [65.2, 74], [65.2, 62], [39.0, 52], [39.0, 36]],
+    "P": [[38, 92], [42, 86], [65.2, 86], [65.2, 74], [65.2, 62], [55.0, 52], [55.0, 36]],
+    "A": [[50, 92], [54, 86], [65.2, 86], [65.2, 74], [65.2, 62], [68.5, 52], [68.5, 36]],
+    "R": [[62, 92], [63, 86], [65.2, 86], [65.2, 74], [65.2, 62], [81.8, 52], [81.8, 36]],
+    "K": [[73, 92], [72, 86], [65.2, 86], [65.2, 74], [65.2, 62], [93.8, 52], [93.8, 36]],
+    "M": [[38, 92], [42, 86], [65.2, 86], [65.2, 74], [65.2, 62], [55.0, 52], [55.0, 36]]
 }
 
 # Static/simulated agent specialist mock responses if Gemini API is missing
@@ -37,6 +47,13 @@ MOCK_RESPONSES = {
     2. Interactive Twitter/X video threads showing the live walking visualizers.
     3. Multi-channel developer news blast using sponsorship programs.""",
     
+    "agent-p": """### Creative Strategy & Growth Positioning
+*   **Market Positioning**: SPARK transforms discrete asynchronous agent workflows into a unified, tactile office experience.
+*   **Strategic Growth Vectors**:
+    1. Interactive showcase landing pages with live token savings calculators.
+    2. Partner co-marketing campaigns with productivity tooling ecosystems.
+    3. Phased enterprise pilots focusing on collaborative multi-agent orchestration.""",
+    
     "agent-a": """### Data Analytics Pipeline & Automation Architecture
 *   **System Event Schema**: All real-time movement state transitions mapped to an SQLite event bus.
 *   **Database Metrics Layout**: Tracks completed vs aborted tasks with automated query indexing for token reduction computations.
@@ -45,13 +62,27 @@ MOCK_RESPONSES = {
     2. Configure automatic database query tuning metrics.
     3. Expose REST endpoints with strict schemas for dashboard rendering.""",
     
+    "agent-r": """### Content Development & Launch Communications
+*   **Narrative Framework**: Crafting an engaging story around AI agent collaboration and context optimization.
+*   **Publication Schedule**:
+    1. Teaser copy highlighting zero-waste token processing.
+    2. Video demonstration script showcasing real-time routing.
+    3. Technical announcement blog post outlining the consensus engine.""",
+    
     "agent-s": """### Semantic Retrieval & Search Optimization Plan
 *   **Web Scraping Strategy**: Utilizes robust headless scraping components with rate-limiting backoffs.
 *   **GraphRAG Neighborhood Expansion**: Crawls 2-hop structural dependency maps inside Neo4j node clusters.
 *   **Search Engine Optimization (SEO)**:
     1. Configure server-side static indexable meta-headers.
     2. Build semantic search lookup index over code assets.
-    3. Verify site indexing maps are compliant with schema standards."""
+    3. Verify site indexing maps are compliant with schema standards.""",
+    
+    "agent-k": """### Data Metrics & Pattern Analysis Report
+*   **Efficiency Metrics**: Analyzed telemetry across agent routing requests showing ~75-80% context reduction.
+*   **Key Findings**:
+    1. Single-agent targeted dispatch minimizes token bloat.
+    2. Latency profile maintains sub-400ms routing turnaround.
+    3. High-confidence capability matching improves task resolution velocity."""
 }
 
 class DispatchService:
@@ -128,7 +159,9 @@ class DispatchService:
             })
             
             agent = self.repo.get_agent(selected_agent_id)
-            cubicle = agent["cubicle"] if agent else "M"
+            cubicle = (agent.get("cubicle") if agent else None) or selected_agent_id.replace("agent-", "").upper()
+            if cubicle not in CUBICLE_COORDINATES:
+                cubicle = "S"
             
             # 3. SELECTED
             await self.broadcast_state(task_id, session_id, "SELECTED", {
@@ -151,7 +184,7 @@ class DispatchService:
             await asyncio.sleep(1)
 
             # 5. WALKING (to cubicle)
-            waypoints = CUBICLE_COORDINATES.get(cubicle, CUBICLE_COORDINATES["M"])
+            waypoints = CUBICLE_COORDINATES.get(cubicle, CUBICLE_COORDINATES["S"])
             self.repo.update_task(task_id, {"status": "WALKING"})
             await self.broadcast_state(task_id, session_id, "WALKING", {
                 "agent_id": selected_agent_id,

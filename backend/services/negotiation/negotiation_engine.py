@@ -6,12 +6,19 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 try:
-    from main import manager, call_gemini
+    from websocket_manager import manager
 except ImportError:
     try:
-        from backend.main import manager, call_gemini
+        from backend.websocket_manager import manager
     except ImportError:
         manager = None
+
+try:
+    from main import call_gemini
+except ImportError:
+    try:
+        from backend.main import call_gemini
+    except ImportError:
         call_gemini = None
 
 from repositories.decision_repository import DecisionRepository
