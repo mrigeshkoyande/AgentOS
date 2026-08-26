@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentos_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/agentos.db:/app/agentos.db
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agentos_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
