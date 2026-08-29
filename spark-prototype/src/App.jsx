@@ -272,6 +272,12 @@ function PokeballIcon({ width = 34, height = 34 }) {
 
 function NavIcon({ type }) {
   switch (type) {
+    case "Results":
+      return (
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+        </svg>
+      );
     case "Workspace":
       return (
         <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
@@ -331,6 +337,9 @@ export function App() {
     return "landing";
   });
   const [sessionId, setSessionId] = useState(() => localStorage.getItem("spark_session_id") || "spark_sess_1");
+  const [sessionDescription, setSessionDescription] = useState("");
+  const [sessionStatus, setSessionStatus] = useState("draft");
+  const [resultsData, setResultsData] = useState(null);
   const [agents, setAgents] = useState(DEFAULT_AGENTS);
   const [task, setTask] = useState(sampleTasks[0].text);
   const [result, setResult] = useState(() => makeInitialResult(sampleTasks[0].text, DEFAULT_AGENTS));
@@ -378,6 +387,52 @@ export function App() {
   const resultRef = useRef(result);
   resultRef.current = result;
 
+  const handleCreateOrganization = async (description) => {
+    const data = await API.sessions.create(description);
+    if (data && data.session_id) {
+      setSessionId(data.session_id);
+      setSessionDescription(description);
+      setSessionStatus("draft");
+      setResultsData(null);
+      localStorage.setItem("spark_session_id", data.session_id);
+      
+      const backendAgents = data.agents || [];
+      const merged = DEFAULT_AGENTS.map((defaultAgent) => {
+        const matched = backendAgents.find((ba) => ba.cubicle === defaultAgent.id);
+        if (matched) {
+          return {
+            ...defaultAgent,
+            backendId: matched.agent_id || matched.id,
+            name: matched.display_name || matched.role || defaultAgent.name,
+            role: matched.role || defaultAgent.role,
+            model: matched.model || "gemini-1.5-flash",
+            status: "pending",
+            task: matched.task || defaultAgent.task,
+            output: ""
+          };
+        }
+        return defaultAgent;
+      });
+      setAgents(merged);
+      navigateToView("dashboard");
+    }
+  };
+
+  const handleRunSession = async () => {
+    if (isRunning) return;
+    try {
+      setIsRunning(true);
+      setSessionStatus("running");
+      setLogs([]);
+      pushLog("System", "Initializing collaborative multi-agent execution DAG...", "core");
+      await API.sessions.run(sessionId);
+    } catch (err) {
+      setIsRunning(false);
+      setSessionStatus("draft");
+      pushLog("Error", err.message || "Failed to start execution.", "system");
+    }
+  };
+
   function pushLog(source, text, tone = "system") {
     setLogs((items) => [
       ...items.slice(-12),
@@ -394,7 +449,6 @@ export function App() {
   useEffect(() => {
     async function initBackend() {
       try {
-        // Bootstrap session
         const sessionList = await API.sessions.list().catch(() => []);
         let activeId = sessionId;
         if (!sessionList.some((s) => s.id === activeId)) {
@@ -406,32 +460,38 @@ export function App() {
           }
         }
 
-        // Fetch agents
-        const backendAgents = await API.agents.list().catch(() => []);
-        if (backendAgents && backendAgents.length > 0) {
-          const merged = DEFAULT_AGENTS.map((defaultAgent) => {
-            const matched = backendAgents.find((ba) => {
-              const bKey = (ba.cubicle || ba.id.replace("agent-", "")).toUpperCase();
-              return bKey === defaultAgent.id;
+        // Load active session details
+        const session = await API.sessions.get(activeId).catch(() => null);
+        if (session) {
+          setSessionDescription(session.description || "");
+          setSessionStatus(session.status || "draft");
+          
+          if (session.agents && session.agents.length > 0) {
+            const merged = DEFAULT_AGENTS.map((defaultAgent) => {
+              const matched = session.agents.find((ba) => ba.cubicle === defaultAgent.id);
+              if (matched) {
+                return {
+                  ...defaultAgent,
+                  backendId: matched.id,
+                  name: matched.display_name || matched.role || defaultAgent.name,
+                  role: matched.role || defaultAgent.role,
+                  model: matched.model || "gemini-1.5-flash",
+                  status: matched.status || "pending",
+                  task: matched.task || defaultAgent.task,
+                  output: matched.output || "",
+                };
+              }
+              return defaultAgent;
             });
-            if (matched) {
-              return {
-                ...defaultAgent,
-                backendId: matched.id,
-                name: matched.name || defaultAgent.name,
-                role: matched.role || defaultAgent.role,
-                model: matched.model || "gemini-1.5-flash",
-                tasks_completed: matched.tasks_completed || 0,
-                tokens_used: matched.tokens_used || 0,
-                status: matched.status || "IDLE",
-                tools: matched.tools && matched.tools.length ? matched.tools : defaultAgent.tools,
-                capabilities: matched.capabilities || defaultAgent.keywords,
-              };
-            }
-            return defaultAgent;
-          });
-          setAgents(merged);
-          setResult((prev) => makeInitialResult(task, merged));
+            setAgents(merged);
+            setResult((prev) => makeInitialResult(task, merged));
+          }
+          
+          // Fetch results if already completed
+          if (session.status === "completed") {
+            const resData = await API.sessions.getResults(activeId).catch(() => null);
+            if (resData) setResultsData(resData);
+          }
         }
 
         // Fetch analytics
@@ -448,7 +508,7 @@ export function App() {
     }
 
     initBackend();
-  }, []);
+  }, [sessionId]);
 
   // 2. Real-time WebSocket connection to /ws/sessions/{sessionId}
   useEffect(() => {
@@ -475,7 +535,87 @@ export function App() {
       const currentAgents = agentsRef.current;
       const currentBest = resultRef.current.best;
 
-      if (eventType === "task_evaluating") {
+      if (eventType === "layer_start") {
+        pushLog("System", `Starting Collaboration Layer ${payload.layer}: ${payload.agents.join(", ")}`, "core");
+      } else if (eventType === "agent_started") {
+        const targetId = payload.agent_id;
+        setAgents((prev) =>
+          prev.map((a) => (a.backendId === targetId || a.id === targetId ? { ...a, status: "running" } : a))
+        );
+        const ag = currentAgents.find((a) => a.backendId === targetId || a.id === targetId);
+        if (ag) {
+          setStage("WALKING");
+          setResult((prev) => ({ ...prev, best: ag }));
+          const waypoints = WAYPOINTS[ag.id] || WAYPOINTS.S;
+          let step = 1;
+          if (runnerTimerRef.current) clearInterval(runnerTimerRef.current);
+          runnerTimerRef.current = setInterval(() => {
+            if (step < waypoints.length) {
+              setPosition({ x: waypoints[step][0], y: waypoints[step][1] });
+              step += 1;
+            } else {
+              clearInterval(runnerTimerRef.current);
+              setStage("WORKING");
+            }
+          }, 200);
+          pushLog(ag.name, `Entering cubicle. Task: ${ag.task || ""}`, ag.id);
+        }
+      } else if (eventType === "agent_token") {
+        const targetId = payload.agent_id;
+        setAgents((prev) =>
+          prev.map((a) => {
+            if (a.backendId === targetId || a.id === targetId) {
+              return { ...a, output: (a.output || "") + payload.token, status: "running" };
+            }
+            return a;
+          })
+        );
+        const ag = currentAgents.find((a) => a.backendId === targetId || a.id === targetId);
+        if (ag) {
+          setStage("STREAMING");
+        }
+      } else if (eventType === "message_sent") {
+        const fromRole = (payload.from_agent || "").replace("agent-", "").toUpperCase();
+        const toRole = (payload.to_agent || "").replace("agent-", "").toUpperCase();
+        const fromAg = currentAgents.find((a) => a.backendId === payload.from_agent || a.id === fromRole);
+        const toAg = currentAgents.find((a) => a.backendId === payload.to_agent || a.id === toRole);
+        const fromName = fromAg ? fromAg.name : fromRole;
+        const toName = toAg ? toAg.name : toRole;
+        
+        pushLog(fromName, `[${(payload.type || "message").toUpperCase()} TO ${toName}] ${payload.content}`, fromAg ? fromAg.id : "system");
+      } else if (eventType === "agent_done") {
+        const targetId = payload.agent_id;
+        setAgents((prev) =>
+          prev.map((a) => (a.backendId === targetId || a.id === targetId ? { ...a, status: "done" } : a))
+        );
+        const ag = currentAgents.find((a) => a.backendId === targetId || a.id === targetId);
+        if (ag) {
+          setStage("RETURNING");
+          pushLog(ag.name, `Finished task execution. Output stored.`, ag.id);
+          const returnWaypoints = [...(WAYPOINTS[ag.id] || WAYPOINTS.S)].reverse();
+          let step = 0;
+          if (runnerTimerRef.current) clearInterval(runnerTimerRef.current);
+          runnerTimerRef.current = setInterval(() => {
+            if (step < returnWaypoints.length) {
+              setPosition({ x: returnWaypoints[step][0], y: returnWaypoints[step][1] });
+              step += 1;
+            } else {
+              clearInterval(runnerTimerRef.current);
+              setStage("READY");
+            }
+          }, 200);
+        }
+      } else if (eventType === "session_done") {
+        setSessionStatus("completed");
+        setIsRunning(false);
+        setStage("READY");
+        pushLog("System", "All execution layers completed. Synthesizing final corporate blueprint...", "core");
+        API.sessions.getResults(sessionId).then((res) => {
+          if (res) setResultsData(res);
+        }).catch(() => {});
+        API.analytics.getOverview().then((res) => res && setAnalyticsOverview(res)).catch(() => {});
+        API.analytics.getTokens().then((res) => res && setTokenAnalytics(res)).catch(() => {});
+      } else if (eventType === "task_evaluating") {
         setStage("EVALUATING");
         pushLog("System", "Analyzing task intent and capabilities...", "core");
       } else if (eventType === "task_routing") {
@@ -498,7 +638,7 @@ export function App() {
             scores: updatedScores.sort((a, b) => b.confidence - a.confidence),
           };
         });
-
+ 
         const startPoint = (WAYPOINTS[selectedAgent.id] || WAYPOINTS.S)[0];
         setPosition({ x: startPoint[0], y: startPoint[1] });
         pushLog("System", `Selected ${selectedAgent.name} (${selectedAgent.role}). ${payload.reason || ""}`, "system");
@@ -516,7 +656,7 @@ export function App() {
         const waypoints = (payload.movement && payload.movement.waypoints) || WAYPOINTS[ag.id] || WAYPOINTS.S;
         
         pushLog(ag.name, `Walking across hallway to ${ag.bay}...`, ag.id);
-
+ 
         // Smoothly traverse intermediate waypoints directly to cubicle
         let step = 1;
         if (runnerTimerRef.current) clearInterval(runnerTimerRef.current);
@@ -572,10 +712,10 @@ export function App() {
             reduction: payload.reduction_percentage ? Math.round(payload.reduction_percentage) : prev.reduction,
           }));
         }
-
+ 
         pushLog("Token Engine", `${formatNumber(payload.tokens_saved || resultRef.current.saved)} tokens saved (${payload.reduction_percentage || resultRef.current.reduction}% context reduction).`, "savings");
         pushLog(ag.name, "Task completed successfully.", ag.id);
-
+ 
         // Refresh analytics
         API.analytics.getOverview().then((res) => res && setAnalyticsOverview(res)).catch(() => {});
         API.analytics.getTokens().then((res) => res && setTokenAnalytics(res)).catch(() => {});
@@ -586,7 +726,7 @@ export function App() {
         const returnWaypoints = (payload.movement && payload.movement.waypoints) || [...(WAYPOINTS[ag.id] || WAYPOINTS.S)].reverse();
         
         pushLog(ag.name, "Returning to deployment bay.", ag.id);
-
+ 
         let step = 0;
         if (runnerTimerRef.current) clearInterval(runnerTimerRef.current);
         runnerTimerRef.current = setInterval(() => {
@@ -738,6 +878,7 @@ export function App() {
   const nav = [
     "Workspace",
     "Agents",
+    "Results",
     "Analytics",
     "Token Savings",
     "Content Studio",
@@ -746,7 +887,12 @@ export function App() {
   ];
 
   if (view === "landing") {
-    return <Landing onGetStarted={() => navigateToView("dashboard")} />;
+    return (
+      <Landing
+        onCreateOrganization={handleCreateOrganization}
+        onGetStarted={() => navigateToView("dashboard")}
+      />
+    );
   }
 
   return (
@@ -965,6 +1111,55 @@ export function App() {
               <div className="pokedex-workspace-grid">
                 {/* Left Column: Office Map Stage + Deployment Bay + Talk Panel */}
                 <div className="pokedex-stage-col">
+                  {/* Session Control and Info Panel */}
+                  {sessionDescription && (
+                    <div className="pokedex-hud-card" style={{ marginBottom: 12 }}>
+                      <div className="hud-card-topbar">
+                        <span className="hud-badge-title">ACTIVE BUSINESS OBJECTIVE</span>
+                        <span className={`status-badge-pokedex ${sessionStatus === "completed" ? "ready" : sessionStatus === "running" ? "working" : "ready"}`} style={{ minWidth: 80, textTransform: "uppercase", textAlign: "center" }}>
+                          {sessionStatus}
+                        </span>
+                      </div>
+                      <div style={{ padding: 14 }}>
+                        <p style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: "600", color: "#faf6ed", opacity: 0.9, fontStyle: "italic" }}>
+                          "{sessionDescription}"
+                        </p>
+                        {sessionStatus === "draft" && (
+                          <button
+                            type="button"
+                            className="action-btn"
+                            style={{ width: "100%", padding: "10px 16px", fontSize: 13, background: "#ffd834", color: "#181818", border: "2px solid #181818", borderRadius: "var(--nb-radius)", fontWeight: "800" }}
+                            onClick={handleRunSession}
+                            disabled={isRunning}
+                          >
+                            🚀 Launch Multi-Agent Organization DAG Collaboration
+                          </button>
+                        )}
+                        {sessionStatus === "running" && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: "700", color: "#22c55e" }}>
+                            <span className="hud-green-dot" style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
+                            Multi-Agent collaboration DAG is running. Tokens are streaming below...
+                          </div>
+                        )}
+                        {sessionStatus === "completed" && (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 13, fontWeight: "700", color: "#ffd834" }}>
+                              ✅ Strategy Blueprint Synthesis is complete!
+                            </span>
+                            <button
+                              type="button"
+                              className="action-btn"
+                              style={{ padding: "6px 12px", fontSize: 12, background: "#ffd834", color: "#181818", border: "2px solid #181818", fontWeight: "800" }}
+                              onClick={() => setActiveNav("Results")}
+                            >
+                              View Synthesis Results &rarr;
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Office Map Card */}
                   <div className="pokedex-hud-card office-viewport-card">
                     <div className="hud-card-topbar">
@@ -1815,6 +2010,113 @@ export function App() {
                         <span>Tokens Processed</span>
                         <b>{formatNumber(agents.find((a) => a.id === "K")?.tokens_used || 0)}</b>
                       </div>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            )}
+
+            {/* ─── TAB: RESULTS ─── */}
+            {activeNav === "Results" && (
+              <div className="pokedex-workspace-grid">
+                <div className="pokedex-stage-col">
+                  {resultsData ? (
+                    <div className="pokedex-hud-card">
+                      <div className="hud-card-header yellow-header">
+                        <span>{resultsData.title || "ORGANIZATION BLUEPRINT"}</span>
+                        <span className="arrow-icon">&gt;</span>
+                      </div>
+                      <div className="results-container-pokedex" style={{ padding: 16, overflowY: 'auto', maxHeight: '72vh', color: '#faf6ed' }}>
+                        <div className="results-section">
+                          <h3 style={{ color: '#ffd834', marginBottom: 8, fontSize: '14px', fontWeight: '800', textTransform: 'uppercase' }}>Executive Summary</h3>
+                          <p style={{ opacity: 0.9, lineHeight: 1.5, fontSize: '13px' }}>{resultsData.summary}</p>
+                        </div>
+                        
+                        <div className="results-section" style={{ marginTop: 20 }}>
+                          <h3 style={{ color: '#ffd834', marginBottom: 8, fontSize: '14px', fontWeight: '800', textTransform: 'uppercase' }}>Final Synthesis Blueprint</h3>
+                          <div className="synthesis-text-box" style={{ background: 'rgba(0,0,0,0.3)', padding: 16, borderRadius: 8, border: '2px solid #181818', lineHeight: 1.6, fontSize: '13px', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                            {resultsData.synthesis}
+                          </div>
+                        </div>
+
+                        <div className="results-section" style={{ marginTop: 20 }}>
+                          <h3 style={{ color: '#ffd834', marginBottom: 8, fontSize: '14px', fontWeight: '800', textTransform: 'uppercase' }}>Key Metrics</h3>
+                          <div className="analytics-metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                            {resultsData.metrics && resultsData.metrics.map((m, idx) => (
+                              <div key={idx} className="hud-stat-box" style={{ background: 'rgba(255, 216, 52, 0.08)' }}>
+                                <span className="stat-label" style={{ fontSize: '11px' }}>{m.label}</span>
+                                <strong className="stat-number" style={{ color: '#ffd834', fontSize: '20px' }}>{m.value}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="results-section" style={{ marginTop: 20 }}>
+                          <h3 style={{ color: '#ffd834', marginBottom: 8, fontSize: '14px', fontWeight: '800', textTransform: 'uppercase' }}>Strategic Recommendations</h3>
+                          <ul style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: '13px' }}>
+                            {resultsData.recommendations && resultsData.recommendations.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pokedex-hud-card">
+                      <div className="hud-card-header yellow-header">
+                        <span>ORGANIZATION BLUEPRINT</span>
+                        <span className="arrow-icon">&gt;</span>
+                      </div>
+                      <div style={{ padding: 40, textAlign: 'center', color: '#faf6ed', opacity: 0.8 }}>
+                        {sessionStatus === "completed" ? (
+                          <div>
+                            <p style={{ fontWeight: '700' }}>Compiling and synthesizing collaborative outputs...</p>
+                            <span className="hud-green-dot" style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', marginTop: 10, animation: 'pulse-led 1.5s infinite' }} />
+                          </div>
+                        ) : (
+                          <div>
+                            <p style={{ fontWeight: '700' }}>No Blueprint Results Available Yet</p>
+                            <p style={{ fontSize: '12px', marginTop: 6, opacity: 0.7 }}>Please run the Multi-Agent Organization DAG from the Workspace tab first.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <aside className="pokedex-sidebar-col">
+                  {resultsData && (
+                    <div className="pokedex-hud-card">
+                      <div className="hud-card-header yellow-header">
+                        <span>EXPORT BLUEPRINT</span>
+                        <span className="arrow-icon">&gt;</span>
+                      </div>
+                      <div className="health-card-body" style={{ padding: 12 }}>
+                        <p style={{ fontSize: 12, marginBottom: 12, opacity: 0.8, color: '#faf6ed' }}>Export this generated workspace blueprint to your local disk:</p>
+                        <button className="action-btn" style={{ width: '100%', marginBottom: 8, background: '#ffd834', color: '#181818', fontWeight: '800', border: '2px solid #181818', borderRadius: '8px', padding: '8px' }} onClick={() => API.sessions.export(sessionId, "json")}>
+                          Download JSON
+                        </button>
+                        <button className="action-btn secondary" style={{ width: '100%', border: '2px solid #181818', borderRadius: '8px', padding: '8px', fontWeight: '800' }} onClick={() => API.sessions.export(sessionId, "md")}>
+                          Download Markdown
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pokedex-hud-card">
+                    <div className="hud-card-header yellow-header">
+                      <span>CONTRIBUTING AGENTS</span>
+                      <span className="arrow-icon">&gt;</span>
+                    </div>
+                    <div className="health-card-body" style={{ padding: 12 }}>
+                      {agents.map((ag) => (
+                        <div key={ag.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span className={`status-badge-pokedex ${ag.status === "done" ? "ready" : "working"}`} style={{ minWidth: 62, textAlign: 'center', fontSize: '9px', padding: '2px 6px' }}>
+                            {ag.status.toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: '700', color: '#faf6ed' }}>{ag.name} ({ag.role})</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </aside>

@@ -154,8 +154,11 @@ function FaqItem({ faq, index }) {
   );
 }
 
-export function Landing({ onGetStarted }) {
+export function Landing({ onCreateOrganization, onGetStarted }) {
   const [stars, setStars] = useState([]);
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const starList = SPARK_STARS.map((spark) => ({
@@ -237,13 +240,62 @@ export function Landing({ onGetStarted }) {
             Deploy specialized AI agents to execute your business workflows.
             Watch them walk to their cubicles in real time and deliver high-precision blueprints.
           </p>
-          <div className="poke-hero-actions">
-            <button className="poke-btn-primary" onClick={onGetStarted} type="button">
-              <span>Start Your Journey</span>
-              <span className="poke-btn-arrow">→</span>
-            </button>
-            <a href="#agents" className="poke-btn-secondary">Meet the Agents</a>
-          </div>
+          
+          <form
+            className="poke-hero-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!description.trim() || loading) return;
+              setLoading(true);
+              setError("");
+              try {
+                await onCreateOrganization(description);
+              } catch (err) {
+                setError(err.message || "Failed to create organization");
+                setLoading(false);
+              }
+            }}
+            style={{ width: "100%", maxWidth: "520px", display: "flex", flexDirection: "column", gap: "12px", margin: "20px 0" }}
+          >
+            <textarea
+              className="poke-hero-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter your project description (e.g. Build an AI-powered platform that helps small businesses automate customer support, analytics, marketing, and internal operations.)"
+              required
+              rows={3}
+              disabled={loading}
+              style={{
+                width: "100%",
+                padding: "14px 18px",
+                borderRadius: "var(--nb-radius)",
+                border: "var(--nb-border)",
+                background: "#fff",
+                color: "var(--nb-dark)",
+                fontSize: "14px",
+                fontWeight: "600",
+                boxShadow: "var(--nb-shadow-sm)",
+                resize: "none",
+                outline: "none"
+              }}
+            />
+            {error && (
+              <p style={{ color: "#e11d48", fontWeight: "800", fontSize: "13px", margin: "0", textAlign: "left" }}>
+                ⚠️ {error}
+              </p>
+            )}
+            <div className="poke-hero-actions" style={{ marginTop: "4px" }}>
+              <button
+                className="poke-btn-primary"
+                type="submit"
+                disabled={loading}
+                style={{ width: "100%", opacity: loading ? 0.75 : 1 }}
+              >
+                <span>{loading ? "Generating Organization..." : "⚡ Create Organization"}</span>
+                <span className="poke-btn-arrow">→</span>
+              </button>
+            </div>
+          </form>
           <div className="poke-hero-mini-agents">
             {AGENTS_INFO.map((a) => (
               <div key={a.id} className="poke-mini-agent" style={{ "--c": a.color }}>
