@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 
 try:
@@ -51,7 +51,7 @@ class DecisionService:
                     "type": event_type,
                     "session_id": session_id,
                     "decision_id": decision_id,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "payload": payload
                 })
                 logger.info(f"Broadcasted WS event '{event_type}' for session {session_id}")
@@ -267,8 +267,8 @@ class DecisionService:
             "proposal": selected_option,
             "counter_proposal": None,
             "reason": "Simulation evaluation using constraint engine.",
-            "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "completed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }]
 
         # Generate simulated outcome
@@ -281,7 +281,7 @@ class DecisionService:
             "tradeoffs": "Tradeoff between cost efficiency and implementation duration.",
             "dissent": "Calculated stakeholder satisfaction scores: " + str(stk_scores),
             "next_actions": "1. Deploy simulation configuration.\n2. Finalize production specifications.",
-            "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
         # Generate simulated conflict if overrides trigger it
@@ -294,7 +294,7 @@ class DecisionService:
                 "description": "Stakeholders have opposing preferences on the same criterion",
                 "severity": "high",
                 "status": "active",
-                "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             }]
         else:
             sim["conflicts"] = []

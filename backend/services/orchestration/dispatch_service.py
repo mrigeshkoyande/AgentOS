@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import os
 
@@ -105,7 +105,7 @@ class DispatchService:
             "session_id": session_id,
             "task_id": task_id,
             "decision_id": None,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": payload
         }
         
@@ -280,7 +280,7 @@ class DispatchService:
                 "status": "COMPLETED",
                 "result": result_text,
                 "execution_time_ms": exec_time_ms,
-                "completed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             })
             await self.broadcast_state(task_id, session_id, "COMPLETED", {
                 "task_id": task_id,

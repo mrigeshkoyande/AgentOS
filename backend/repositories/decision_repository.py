@@ -2,7 +2,7 @@ import sqlite3
 import os
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "agentos.db"))
@@ -16,6 +16,18 @@ def get_db():
 def create_tables():
     conn = get_db()
     cursor = conn.cursor()
+    
+    # sessions
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'draft',
+        user_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
     
     # decisions
     cursor.execute("""
@@ -300,11 +312,11 @@ class DecisionRepository:
         cursor = conn.cursor()
         
         # Ensure updated_at is updated
-        fields["updated_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        fields["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         
         # Handle datetime updates
         if "status" in fields and fields["status"] in ["APPROVED", "COMPLETED", "FAILED", "REJECTED"]:
-            fields["completed_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            fields["completed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         
         keys = []
         values = []
@@ -547,7 +559,7 @@ class DecisionRepository:
     def resolve_conflict(self, conflict_id: str) -> bool:
         conn = get_db()
         cursor = conn.cursor()
-        resolved_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
             "UPDATE conflicts SET status = 'resolved', resolved_at = ? WHERE id = ?",
             (resolved_at, conflict_id)
@@ -579,7 +591,7 @@ class DecisionRepository:
         cursor = conn.cursor()
         
         if "status" in fields and fields["status"] == "completed":
-            fields["completed_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            fields["completed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             
         keys = []
         values = []

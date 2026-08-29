@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Tuple
 
 try:
@@ -75,7 +75,7 @@ class NegotiationEngine:
             "session_id": session_id,
             "task_id": None,
             "decision_id": decision_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": payload
         }
         if manager:
