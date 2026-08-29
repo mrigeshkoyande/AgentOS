@@ -6,6 +6,7 @@ import sqlite3
 import asyncio
 import logging
 import requests
+import httpx
 from datetime import datetime
 from typing import List, Dict, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
@@ -24,7 +25,7 @@ except ImportError:
     pass
 
 # Database File Path
-DB_FILE = os.path.join(os.path.dirname(__file__), "agentos.db")
+DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "agentos.db"))
 
 # Models for Request Bodies
 class SessionCreate(BaseModel):
@@ -39,10 +40,10 @@ app = FastAPI(title="AgentOS Backend", version="1.0.0")
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=False,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 from websocket_manager import manager
@@ -50,6 +51,7 @@ from websocket_manager import manager
 from routes.decisions import router as decisions_router
 from routes.tasks import router as tasks_router
 from routes.analytics import router as analytics_router
+
 app.include_router(decisions_router)
 app.include_router(tasks_router)
 app.include_router(analytics_router)
@@ -58,6 +60,7 @@ app.include_router(analytics_router)
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 # Database tables initialization
@@ -91,6 +94,7 @@ def init_db():
         layer INTEGER DEFAULT 0,
         status TEXT DEFAULT 'pending',
         output TEXT,
+        cubicle TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         completed_at TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -167,6 +171,14 @@ def init_db():
 # Run database setup
 init_db()
 
+# --- Health Endpoint ---
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "agentos"
+    }
+
 # --- Gemini API Call helper ---
 def call_gemini(prompt: str, system_instruction: str = None) -> Optional[str]:
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -195,27 +207,121 @@ def call_gemini(prompt: str, system_instruction: str = None) -> Optional[str]:
         logger.error(f"Gemini API request failed: {e}")
     return None
 
+async def call_gemini_async(prompt: str, system_instruction: str = None) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return ""
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    if system_instruction:
+        payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(url, json=payload, headers=headers, timeout=30.0)
+            if res.status_code == 200:
+                data = res.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+        except Exception as e:
+            logger.error(f"Gemini API async call failed: {e}")
+    return ""
+
+async def call_gemini_stream(prompt: str, system_instruction: str = None):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    if system_instruction:
+        payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        
+    async with httpx.AsyncClient() as client:
+        try:
+            async with client.stream("POST", url, json=payload, headers=headers, timeout=30.0) as response:
+                if response.status_code == 200:
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        line_cleaned = line.strip().lstrip("[").rstrip("]").rstrip(",")
+                        if not line_cleaned:
+                            continue
+                        try:
+                            data = json.loads(line_cleaned)
+                            text = data['candidates'][0]['content']['parts'][0]['text']
+                            yield text
+                        except Exception:
+                            # Try simple regex extraction if json parsing of a line chunk fails
+                            match = re.search(r'"text"\s*:\s*"([^"]+)"', line_cleaned)
+                            if match:
+                                try:
+                                    yield match.group(1).encode().decode('unicode-escape')
+                                except Exception:
+                                    yield match.group(1)
+        except Exception as e:
+            logger.error(f"Gemini streaming request failed: {e}")
+
+async def call_mock_stream(role: str, task: str, description: str):
+    output = get_mock_output(role, task, description)
+    words = output.split(" ")
+    chunk_size = 3
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i:i+chunk_size])
+        if i > 0:
+            chunk = " " + chunk
+        yield chunk
+        await asyncio.sleep(0.04)
+
+class ModelRouter:
+    @staticmethod
+    async def generate_stream(role: str, task: str, description: str, system_prompt: str, model: str):
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            prompt = f"""
+            You are an AI agent part of a multi-agent planning organization. 
+            Overall project description: "{description}"
+            Your specific role: "{role}"
+            Your specific task: "{task}"
+            
+            Write a concise, extremely detailed professional output (about 300-400 words) satisfying your task in markdown format.
+            Use headers, lists, and bold text. Start directly with your analysis.
+            If you need to ask another role a question, embed it exactly in this syntax:
+            QUESTION_TO:[TargetRole]Your query details here...END_QUESTION
+            """
+            async for chunk in call_gemini_stream(prompt, system_instruction=system_prompt):
+                yield chunk
+        else:
+            async for chunk in call_mock_stream(role, task, description):
+                yield chunk
+
 # --- dynamic role generator ---
 def generate_agents_for_description(description: str) -> List[Dict]:
-    # Try dynamic role generation with Gemini first
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         prompt = f"""
         Given the following startup/project description:
         "{description}"
         
-        Generate a list of 4-6 AI agent roles needed to execute this project.
-        Group them into dependency layers:
-        - Layer 0: High-level independent strategists (e.g. CEO, CTO, CFO).
-        - Layer 1: Specialized executioners who depend on Layer 0 strategist outputs (e.g. Lead Developer, Product Manager, Marketing Specialist).
+        Generate exactly 5 specialized AI agent roles needed to execute this project.
+        Assign each agent a unique cubicle value ('S', 'P', 'A', 'R', or 'K') and group them into dependency layers:
+        - Layer 0: High-level independent strategists (e.g. CEO, CTO, CFO). Set layer to 0.
+        - Layer 1: Specialized executioners who depend on Layer 0 strategist outputs (e.g. Lead Developer, Product Manager, Marketing Specialist). Set layer to 1.
         
-        Return ONLY a JSON array of objects with the following format:
+        Return ONLY a JSON array of exactly 5 objects with the following format:
         [
           {{
             "role": "CEO",
             "display_name": "Sarah Jenkins - Chief Executive Officer",
             "model": "kimi-k2",
             "layer": 0,
+            "cubicle": "S",
             "task": "Create the overall strategic business model, identify product market fit, and define execution phases.",
             "system_prompt": "You are the CEO. Your goal is to guide the team strategically..."
           }}
@@ -225,26 +331,31 @@ def generate_agents_for_description(description: str) -> List[Dict]:
         response_text = call_gemini(prompt)
         if response_text:
             try:
-                # Strip backticks if the model added them
                 cleaned = re.sub(r"^```json\s*|```$", "", response_text.strip(), flags=re.MULTILINE)
                 agents = json.loads(cleaned)
                 if isinstance(agents, list) and len(agents) > 0:
+                    cubicles = ["S", "P", "A", "R", "K"]
+                    for idx, a in enumerate(agents):
+                        if "cubicle" not in a:
+                            a["cubicle"] = cubicles[idx % len(cubicles)]
+                        if "layer" not in a:
+                            a["layer"] = 0 if idx < 3 else 1
                     logger.info("Successfully generated dynamic agents via Gemini")
                     return agents
             except Exception as e:
                 logger.error(f"Failed to parse Gemini generated roles JSON: {e}")
                 
-    # Fallback/Mock dynamic builder
+    # Fallback dynamic builder
     desc_lower = description.lower()
     logger.info("Using standard fallback dynamic agent builder")
     
-    # Base Strategists (Layer 0)
     agents = [
         {
             "role": "CEO",
             "display_name": "Sarah Jenkins - Chief Executive Officer",
             "model": "kimi-k2",
             "layer": 0,
+            "cubicle": "S",
             "task": "Create the overall strategic business model, identify product market fit, and define execution phases.",
             "system_prompt": "You are the CEO of AgentOS. Your goal is to design the strategy, coordinate sub-agents, and synthesize findings."
         },
@@ -253,6 +364,7 @@ def generate_agents_for_description(description: str) -> List[Dict]:
             "display_name": "Alex Chen - Chief Technology Officer",
             "model": "kimi-k2",
             "layer": 0,
+            "cubicle": "P",
             "task": "Design the system architecture, select the technology stack, and identify technical scaling challenges.",
             "system_prompt": "You are the CTO. Your goal is to evaluate tech stack, engineering challenges, architecture diagrams, and security protocols."
         },
@@ -261,12 +373,12 @@ def generate_agents_for_description(description: str) -> List[Dict]:
             "display_name": "Marcus Vance - Chief Financial Officer",
             "model": "gpt-4o",
             "layer": 0,
+            "cubicle": "A",
             "task": "Develop the financial model, estimate MVP development budget, and define the pricing strategy.",
             "system_prompt": "You are the CFO. Your goal is to draft budget breakdowns, pricing plans (freemium/premium), and revenue metrics."
         }
     ]
     
-    # Layer 1 based on description content
     if any(keyword in desc_lower for keyword in ["marketing", "sales", "brand", "agency"]):
         agents.extend([
             {
@@ -274,6 +386,7 @@ def generate_agents_for_description(description: str) -> List[Dict]:
                 "display_name": "Julian Ross - Marketing Director",
                 "model": "gemini-1.5-pro",
                 "layer": 1,
+                "cubicle": "R",
                 "task": "Design the launch strategy, select digital marketing channels, and estimate client acquisition costs.",
                 "system_prompt": "You are the Marketing Specialist. Your goal is to create advertising channels, landing page hooks, and growth tactics."
             },
@@ -282,6 +395,7 @@ def generate_agents_for_description(description: str) -> List[Dict]:
                 "display_name": "Chloe Mercer - Creative Director",
                 "model": "gemini-1.5-pro",
                 "layer": 1,
+                "cubicle": "K",
                 "task": "Define the brand identity, logo concepts, and content theme parameters for the campaign.",
                 "system_prompt": "You are the Creative Director. Design aesthetic values, UI layouts, colors, and key messaging."
             }
@@ -293,6 +407,7 @@ def generate_agents_for_description(description: str) -> List[Dict]:
                 "display_name": "Elena Rostova - Legal Counsel",
                 "model": "gpt-4o",
                 "layer": 1,
+                "cubicle": "R",
                 "task": "Identify compliance standards (HIPAA, GDPR, etc.), outline security guidelines, and draft key policy highlights.",
                 "system_prompt": "You are the Legal & Compliance Specialist. Advise on regulations, licensing, liability, and safety requirements."
             },
@@ -301,18 +416,19 @@ def generate_agents_for_description(description: str) -> List[Dict]:
                 "display_name": "Liam Vance - Product Manager",
                 "model": "gemini-1.5-pro",
                 "layer": 1,
+                "cubicle": "K",
                 "task": "Draft detailed user stories, itemize core features for the MVP, and build a product roadmap.",
                 "system_prompt": "You are the Product Manager. Your goal is to outline spec documents, prioritization matrices, and sprint milestones."
             }
         ])
     else:
-        # Default Developer & Product Manager roles
         agents.extend([
             {
                 "role": "Product Manager",
                 "display_name": "Elena Rostova - Product Manager",
                 "model": "gemini-1.5-pro",
                 "layer": 1,
+                "cubicle": "R",
                 "task": "Define user personas, core MVP feature specification list, and write a release timeline.",
                 "system_prompt": "You are the Product Manager. Create feature prioritization lists, client user flows, and release milestones."
             },
@@ -321,6 +437,7 @@ def generate_agents_for_description(description: str) -> List[Dict]:
                 "display_name": "David Kim - Lead Developer",
                 "model": "llama-3.1-70b",
                 "layer": 1,
+                "cubicle": "K",
                 "task": "Draft developer instructions, configure DB schema guidelines, and provide git folder structure specs.",
                 "system_prompt": "You are the Lead Developer. Provide file structures, sample SQL schemas, API call guidelines, and code snippets."
             }
@@ -345,8 +462,8 @@ Our project focuses on addressing a critical gap in the market: {desc_clean}. Ou
 
 #### 3. Core Business Model & Revenue Streams
 1. **SaaS Subscription Model:** Flat-rate billing of $29/user/month for mid-market, $99/user/month for Enterprise.
-2. **Usage-Based Pricing:** Tiered pricing for high-volume transactions, ensuring aligned incentives.
-3. **Professional Services:** High-margin training and custom onboarding workshops for enterprise accounts.
+2. **Usage-Based Pricing:** Tiered pricing for high-volume transactions.
+3. **Professional Services:** High-margin training and custom onboarding workshops.
 
 #### 4. Phased Implementation Roadmap
 - **Phase 1 (Month 1-3):** MVP Launch and Closed Beta testing with 50 select design partners.
@@ -366,19 +483,17 @@ Our project focuses on addressing a critical gap in the market: {desc_clean}. Ou
 #### 2. High-Level System Architecture
 - Client UI communicates with API Gateway via HTTPS (REST RESTful APIs) and WebSockets.
 - Background tasks are delegated to Celery worker pools using RabbitMQ.
-- Secure token-based OAuth2 authentication handles session isolation.
 
 #### 3. Scaling & Security Implementation
 - **HIPAA/GDPR Compliance:** Encryption of sensitive parameters at rest (AES-256) and in transit (TLS 1.3).
 - **Concurrency:** Non-blocking asynchronous handlers to prevent connection bottle-necks.
-- **Database Backups:** Automatic daily snapshots with multi-region redundancy.
 """
     elif "cfo" in role.lower():
         return f"""### Financial & Cost Projections: {desc_clean}
 **Prepared by Marcus Vance, CFO**
 
 #### 1. Financial Projection Highlights
-- **Estimated Launch Budget:** $50,000 for Q1 (covering infrastructure, initial design, and legal setup).
+- **Estimated Launch Budget:** $50,000 for Q1 (infrastructure and setup).
 - **Customer Acquisition Cost (CAC):** Target $15 per customer through organic content and inbound funnels.
 - **Lifetime Value (LTV):** Estimated at $348 (average retention of 12 months at $29/month).
 
@@ -388,9 +503,6 @@ Our project focuses on addressing a critical gap in the market: {desc_clean}. Ou
   - *Starter:* $19/month (up to 3 projects, basic integrations).
   - *Professional:* $49/month (unlimited projects, advanced modules).
   - *Enterprise:* Custom pricing (Dedicated host, Single Sign-On, SLA guarantees).
-
-#### 3. Break-Even Analysis
-Assuming a monthly burn rate of $5,000 (including server fees and marketing), the venture will achieve break-even status upon acquiring 103 active Professional tier subscribers.
 """
     elif "product manager" in role.lower() or "pm" in role.lower():
         return f"""### Product Specification Document: {desc_clean}
@@ -401,15 +513,6 @@ Assuming a monthly burn rate of $5,000 (including server fees and marketing), th
 2. **Real-time Live Feed:** Immediate updates showing sub-agent activity and inter-agent dialogues.
 3. **Structured Export:** Multi-format download (JSON, Markdown) for instant saving of results.
 4. **Session Loader:** Ability to load and resume past executions with a session ID token.
-
-#### 2. User Persona Profiles
-- **User A (The Busy Strategist):** Needs quick, actionable insights without typing complex commands.
-- **User B (The Dev Lead):** Wants detailed structural guides, database schemas, and codebase blueprints.
-
-#### 3. Release Roadmap
-- **Milestone 1:** High-fidelity wireframe and static frontend components validation.
-- **Milestone 2:** Event bus integration and WebSocket token stream testing.
-- **Milestone 3 (Public launch):** Stable MVP release with download functionality.
 """
     elif "developer" in role.lower() or "dev" in role.lower():
         return f"""### Codebase Blueprint & Implementation Details: {desc_clean}
@@ -423,7 +526,6 @@ workspace/
 │   │   └── main.css
 │   ├── js/
 │   │   ├── api.js
-│   │   ├── ws.js
 │   │   └── orgChart.js
 │   └── index.html
 └── backend/
@@ -438,24 +540,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     description TEXT NOT NULL,
     status TEXT DEFAULT 'draft'
 );
-CREATE TABLE IF NOT EXISTS agents (
-    id TEXT PRIMARY KEY,
-    session_id TEXT REFERENCES sessions(id),
-    role TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',
-    output TEXT
-);
-```
-
-#### 3. API Route Handler Example
-```python
-@app.get("/api/sessions/{{session_id}}")
-async def get_session(session_id: str):
-    conn = get_db()
-    session = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return dict(session)
 ```
 """
     elif "marketing" in role.lower() or "mktg" in role.lower():
@@ -466,34 +550,15 @@ async def get_session(session_id: str):
 - **Product Hunt Campaign:** Goal is to reach Top 5 Product of the Day.
 - **Social Launch:** Short video threads on X/Twitter and LinkedIn showcasing the live token stream.
 - **Content Marketing:** In-depth blog posts analyzing "How AgentOS automates startup launches in 5 minutes".
-
-#### 2. Key Advertising & Outbound Channels
-1. **LinkedIn Organic & Paid:** Targeted towards Product Managers, Founders, and Technical leads.
-2. **Founder Communities:** Pitching in Slack/Discord channels, Indie Hackers, and Hackernews.
-3. **Developer Newsletters:** Sponsor newsletters like TL;DR and JavaScript Weekly.
-
-#### 3. Expected Metrics
-- **Sign-ups (Week 1):** Target 500 free sign-ups.
-- **Conversion Rate:** Aim for 3-5% conversion from Free Trial to Starter/Professional.
-- **Viral Coefficient:** Focus on encouraging share link utilization on results page.
 """
     elif "legal" in role.lower() or "compliance" in role.lower():
         return f"""### Legal & Regulatory Review: {desc_clean}
 **Prepared by Elena Rostova, Legal Counsel**
 
 #### 1. Regulatory Guidelines
-Given the scope of "{desc_clean}", the product must align with key compliance guidelines:
 - **GDPR (Europe):** Data deletion protocols (Right to be Forgotten) and cookie consent banners.
 - **HIPAA (USA - if Healthcare):** Business Associate Agreements (BAA) with server hosts and database encryption.
 - **Terms of Service (ToS):** Disclaimers regarding AI limitations and generated content accuracy.
-
-#### 2. Licensing Requirements
-- Software components utilize MIT or Apache 2.0 open-source licenses to avoid copyleft issues.
-- Third-party API usage (like Gemini/OpenAI) must comply with their developer terms of service.
-
-#### 3. Liability Mitigation
-- Implement standard terms disclaiming liability for direct, indirect, or incidental damages.
-- Clearly state that AgentOS outputs are recommendations and must be verified by certified professionals.
 """
     else:
         return f"""### Operational Report: {role}
@@ -505,10 +570,6 @@ We have carefully analyzed the context of `{desc_clean}` and implemented steps t
 #### 2. Key Accomplishments
 - Created structured criteria for operational reviews.
 - Outlined execution obstacles and resolved data conflicts.
-- Proposed key performance indicators (KPIs) to track ongoing progress.
-
-#### 3. Collaboration Summary
-{context or "Exchanged parameters with strategist agents to align priorities."}
 """
 
 # --- REST API Endpoints ---
@@ -540,12 +601,14 @@ def create_session(payload: SessionCreate):
     agents_data = generate_agents_for_description(payload.description)
     agents_list = []
     
-    for a in agents_data:
+    cubicles = ['S', 'P', 'A', 'R', 'K']
+    for idx, a in enumerate(agents_data):
         agent_id = f"agent_{uuid.uuid4().hex[:10]}"
+        cubicle = a.get("cubicle", cubicles[idx % len(cubicles)])
         cursor.execute(
             """INSERT INTO agents 
-               (id, session_id, role, display_name, model, system_prompt, task, layer, status) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, session_id, role, display_name, model, system_prompt, task, layer, status, cubicle) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 agent_id,
                 session_id,
@@ -555,7 +618,8 @@ def create_session(payload: SessionCreate):
                 a.get("system_prompt", ""),
                 a.get("task", ""),
                 a.get("layer", 0),
-                "pending"
+                "pending",
+                cubicle
             )
         )
         agents_list.append({
@@ -565,7 +629,8 @@ def create_session(payload: SessionCreate):
             "model": a["model"],
             "layer": a.get("layer", 0),
             "status": "pending",
-            "task": a.get("task", "")
+            "task": a.get("task", ""),
+            "cubicle": cubicle
         })
         
     conn.commit()
@@ -598,7 +663,6 @@ def get_session(session_id: str):
     agents = []
     for row in agent_rows:
         a = dict(row)
-        # map db name 'id' to api name 'agent_id'
         a["agent_id"] = a["id"]
         agents.append(a)
         
@@ -615,7 +679,7 @@ def override_model(agent_id: str, payload: ModelOverride):
     cursor.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
     agent = cursor.fetchone()
     if not agent:
-        cursor.execute("SELECT * FROM agents WHERE id LIKE ? OR name LIKE ?", (f"%{agent_id}%", f"%{agent_id}%"))
+        cursor.execute("SELECT * FROM agents WHERE id LIKE ? OR role LIKE ?", (f"%{agent_id}%", f"%{agent_id}%"))
         agent = cursor.fetchone()
         
     if agent:
@@ -626,9 +690,9 @@ def override_model(agent_id: str, payload: ModelOverride):
         )
     else:
         cursor.execute(
-            "INSERT OR REPLACE INTO agents (id, session_id, name, role, model, model_override, system_prompt, status) "
-            "VALUES (?, 'spark_default_session', ?, ?, ?, ?, '', 'IDLE')",
-            (agent_id, f"Agent {agent_id.upper()}", f"Specialist {agent_id.upper()}", payload.model, payload.model)
+            "INSERT OR REPLACE INTO agents (id, session_id, role, model, model_override, system_prompt, status) "
+            "VALUES (?, 'spark_default_session', ?, ?, ?, '', 'IDLE')",
+            (agent_id, f"Specialist {agent_id.upper()}", payload.model, payload.model)
         )
     conn.commit()
     conn.close()
@@ -673,22 +737,35 @@ def get_results(session_id: str):
     agents_rows = cursor.fetchall()
     
     agents = []
-    ceo_output = ""
+    reports_context = ""
     for r in agents_rows:
         a = dict(r)
         a["agent_id"] = a["id"]
         agents.append(a)
-        if a["role"] == "CEO":
-            ceo_output = a["output"] or ""
+        reports_context += f"### {a['role']} Blueprint Report:\n{a['output'] or 'No report generated.'}\n\n"
             
     summary_text = "Analysis is complete. All agents have collaborated to form the structural outline."
     synthesis_text = "Synthesis: The strategic foundation matches the technology stack and product milestones."
     
-    if ceo_output:
-        # Extract from CEO output if possible
-        summary_text = ceo_output[:250] + "..."
-        synthesis_text = ceo_output
+    # Call Gemini for dynamic final synthesis if API key is present
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key and reports_context:
+        synthesis_prompt = f"""
+        Act as a Chief of Staff. You have received the following reports from the AI Organization regarding the project description: "{session['description']}"
         
+        {reports_context}
+        
+        Synthesize these findings into a single, cohesive, extremely detailed corporate execution plan.
+        Use headers, bullet points, and clean markdown.
+        """
+        try:
+            res_text = call_gemini(synthesis_prompt)
+            if res_text:
+                synthesis_text = res_text.strip()
+                summary_text = synthesis_text[:300] + "..."
+        except Exception as e:
+            logger.error(f"Failed to generate real synthesis: {e}")
+            
     # Build clean metrics
     metrics = [
         {"value": "$50k", "label": "Estimated Q1 Budget"},
@@ -737,7 +814,6 @@ def export_results(session_id: str, format: str = "json"):
     results_data = get_results(session_id)
     
     if format == "json":
-        # Return JSON direct download header
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=results_data,
@@ -798,6 +874,11 @@ async def run_session(session_id: str):
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
         
+    # Prevent duplicate runs
+    if session["status"] == "running":
+        conn.close()
+        raise HTTPException(status_code=409, detail="Session is already running")
+        
     # Set running
     cursor.execute("UPDATE sessions SET status = 'running' WHERE id = ?", (session_id,))
     conn.commit()
@@ -847,122 +928,6 @@ async def execute_dag(session_id: str, description: str):
         tasks = [execute_single_agent(session_id, agent, description) for agent in layer_agents]
         await asyncio.gather(*tasks)
         
-        # Insert Layer communications/message sequences
-        if layer_idx == 0:
-            # Let CTO ask CEO a question, and CEO answer
-            ceo = next((a for a in layer_agents if a["role"] == "CEO"), None)
-            cto = next((a for a in layer_agents if a["role"] == "CTO"), None)
-            
-            if ceo and cto:
-                await asyncio.sleep(1)
-                
-                # Question
-                q_id = f"msg_{uuid.uuid4().hex[:10]}"
-                q_content = "QUESTION_TO:[CEO] What is our target timeline for MVP launch and expected validation milestones?"
-                conn = get_db()
-                conn.execute(
-                    "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
-                    (q_id, session_id, cto["agent_id"], ceo["agent_id"], "question", q_content)
-                )
-                conn.commit()
-                conn.close()
-                
-                await manager.broadcast(session_id, {
-                    "event": "message_sent",
-                    "id": q_id,
-                    "session_id": session_id,
-                    "from_agent": cto["agent_id"],
-                    "to_agent": ceo["agent_id"],
-                    "type": "question",
-                    "content": q_content,
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-                await asyncio.sleep(2)
-                
-                # Answer
-                a_id = f"msg_{uuid.uuid4().hex[:10]}"
-                a_content = "ANSWER_TO:[CTO] We are targeting a Q3 launch. Milestone 1 is static prototype validation, Milestone 2 is WebSocket pipeline streaming integration, and Milestone 3 is full public beta."
-                conn = get_db()
-                conn.execute(
-                    "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
-                    (a_id, session_id, ceo["agent_id"], cto["agent_id"], "answer", a_content)
-                )
-                conn.commit()
-                conn.close()
-                
-                await manager.broadcast(session_id, {
-                    "event": "message_sent",
-                    "id": a_id,
-                    "session_id": session_id,
-                    "from_agent": ceo["agent_id"],
-                    "to_agent": cto["agent_id"],
-                    "type": "answer",
-                    "content": a_content,
-                    "timestamp": datetime.now().isoformat()
-                })
-                await asyncio.sleep(1)
-                
-        elif layer_idx == 1:
-            # Let PM ask CTO a question, and CTO answer
-            pm = next((a for a in layer_agents if "product" in a["role"].lower() or "pm" in a["role"].lower()), None)
-            
-            # Find CTO from database since he was in Layer 0
-            conn = get_db()
-            cto_row = conn.execute("SELECT * FROM agents WHERE session_id = ? AND role = 'CTO'", (session_id,)).fetchone()
-            conn.close()
-            
-            if pm and cto_row:
-                cto_id = cto_row["id"]
-                await asyncio.sleep(1)
-                
-                # Question
-                q_id = f"msg_{uuid.uuid4().hex[:10]}"
-                q_content = "QUESTION_TO:[CTO] What security standards and compliance frameworks should we build into our core communication pipelines?"
-                conn = get_db()
-                conn.execute(
-                    "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
-                    (q_id, session_id, pm["agent_id"], cto_id, "question", q_content)
-                )
-                conn.commit()
-                conn.close()
-                
-                await manager.broadcast(session_id, {
-                    "event": "message_sent",
-                    "id": q_id,
-                    "session_id": session_id,
-                    "from_agent": pm["agent_id"],
-                    "to_agent": cto_id,
-                    "type": "question",
-                    "content": q_content,
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-                await asyncio.sleep(2)
-                
-                # Answer
-                a_id = f"msg_{uuid.uuid4().hex[:10]}"
-                a_content = "ANSWER_TO:[PM] We should implement AES-256 encryption at rest and TLS 1.3 in transit. For communication pipelines, secure WebSockets with JWT token authentication will satisfy our safety profiles."
-                conn = get_db()
-                conn.execute(
-                    "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
-                    (a_id, session_id, cto_id, pm["agent_id"], "answer", a_content)
-                )
-                conn.commit()
-                conn.close()
-                
-                await manager.broadcast(session_id, {
-                    "event": "message_sent",
-                    "id": a_id,
-                    "session_id": session_id,
-                    "from_agent": cto_id,
-                    "to_agent": pm["agent_id"],
-                    "type": "answer",
-                    "content": a_content,
-                    "timestamp": datetime.now().isoformat()
-                })
-                await asyncio.sleep(1)
-                
     # Mark Session Complete
     conn = get_db()
     conn.execute("UPDATE sessions SET status = 'completed' WHERE id = ?", (session_id,))
@@ -982,6 +947,7 @@ async def execute_single_agent(session_id: str, agent: dict, description: str):
     role = agent["role"]
     task = agent["task"]
     sys_prompt = agent["system_prompt"]
+    model = agent["model"]
     
     logger.info(f"Agent {role} started execution.")
     
@@ -1011,47 +977,18 @@ async def execute_single_agent(session_id: str, agent: dict, description: str):
     if context_msgs:
         context_str = "\n".join([f"{m['from_agent']} -> {m['to_agent']}: {m['content']}" for m in context_msgs])
         
-    # Determine output content (Real Gemini API call vs dynamic simulated text)
-    api_key = os.environ.get("GEMINI_API_KEY")
+    # Stream the output token by token
     agent_output = ""
-    
-    if api_key:
-        prompt = f"""
-        You are part of an AI startup planning suite. 
-        Overall project description: "{description}"
-        Your specific role: "{role}"
-        Your specific task: "{task}"
-        
-        Previous collaboration context:
-        {context_str}
-        
-        Write a concise, extremely detailed professional output (about 300-400 words) satisfying your task in markdown format. 
-        Start immediately with your analysis. Use headers, lists, and bold text. Do not output conversational preamble.
-        """
-        response_text = call_gemini(prompt, system_instruction=sys_prompt)
-        if response_text:
-            agent_output = response_text.strip()
-            
-    if not agent_output:
-        # Generate simulation template output
-        agent_output = get_mock_output(role, task, description, context_str)
-        
-    # Stream the output token by token (or chunk of words)
-    # We split into words to stream rapidly
-    words = agent_output.split(" ")
-    chunk_size = 3
-    
-    for i in range(0, len(words), chunk_size):
-        chunk = " ".join(words[i:i+chunk_size])
-        if i > 0:
-            chunk = " " + chunk
+    async for chunk in ModelRouter.generate_stream(role, task, description, sys_prompt, model):
+        agent_output += chunk
         await manager.broadcast(session_id, {
             "event": "agent_token",
             "agent_id": agent_id,
             "token": chunk
         })
-        # sleep slightly to simulate typing speed
-        await asyncio.sleep(0.06)
+        
+    # Intercept QUESTION_TO to resolve inter-agent dependencies
+    agent_output = await check_and_route_messages(session_id, agent, agent_output, description)
         
     # Mark agent done
     conn = get_db()
@@ -1070,13 +1007,123 @@ async def execute_single_agent(session_id: str, agent: dict, description: str):
     })
     logger.info(f"Agent {role} execution done.")
 
+# --- Inter-Agent Message Routing ---
+async def check_and_route_messages(session_id: str, sender_agent: dict, text: str, description: str):
+    match = re.search(r'QUESTION_TO:\[([^\]]+)\](.*?)END_QUESTION', text, re.DOTALL)
+    if not match:
+        return text
+    
+    target_role = match.group(1).strip()
+    question_text = match.group(2).strip()
+    
+    # Find target agent in database
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM agents WHERE session_id = ? AND role = ?", (session_id, target_role))
+    target_row = cursor.fetchone()
+    conn.close()
+    
+    if not target_row:
+        return text
+    
+    target_agent = dict(target_row)
+    target_agent["agent_id"] = target_agent["id"]
+    
+    # Put sender into waiting
+    conn = get_db()
+    conn.execute("UPDATE agents SET status = 'waiting' WHERE id = ?", (sender_agent["agent_id"],))
+    conn.commit()
+    conn.close()
+    
+    # Broadcast message_sent question
+    q_id = f"msg_{uuid.uuid4().hex[:10]}"
+    q_content = f"QUESTION_TO:[{target_role}] {question_text}"
+    
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
+        (q_id, session_id, sender_agent["agent_id"], target_agent["agent_id"], "question", q_content)
+    )
+    conn.commit()
+    conn.close()
+    
+    await manager.broadcast(session_id, {
+        "event": "message_sent",
+        "id": q_id,
+        "session_id": session_id,
+        "from_agent": sender_agent["agent_id"],
+        "to_agent": target_agent["agent_id"],
+        "type": "question",
+        "content": q_content,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    # Generate answer from target agent by executing it
+    conn = get_db()
+    conn.execute("UPDATE agents SET status = 'running' WHERE id = ?", (target_agent["agent_id"],))
+    conn.commit()
+    conn.close()
+    await manager.broadcast(session_id, {
+        "event": "agent_started",
+        "agent_id": target_agent["agent_id"]
+    })
+    
+    answer_text = ""
+    async for chunk in ModelRouter.generate_stream(target_role, f"Answer question: {question_text}", description, target_agent.get("system_prompt", ""), target_agent.get("model", "gemini-1.5-flash")):
+        answer_text += chunk
+        await manager.broadcast(session_id, {
+            "event": "agent_token",
+            "agent_id": target_agent["agent_id"],
+            "token": chunk
+        })
+        
+    # Mark target agent done
+    conn = get_db()
+    conn.execute("UPDATE agents SET status = 'done', output = ? WHERE id = ?", (answer_text, target_agent["agent_id"]))
+    conn.commit()
+    conn.close()
+    await manager.broadcast(session_id, {
+        "event": "agent_done",
+        "agent_id": target_agent["agent_id"],
+        "output_summary": answer_text[:120] + "..."
+    })
+    
+    # Broadcast message_sent answer
+    a_id = f"msg_{uuid.uuid4().hex[:10]}"
+    
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO messages (id, session_id, from_agent, to_agent, type, content) VALUES (?, ?, ?, ?, ?, ?)",
+        (a_id, session_id, target_agent["agent_id"], sender_agent["agent_id"], "answer", answer_text)
+    )
+    conn.commit()
+    conn.close()
+    
+    await manager.broadcast(session_id, {
+        "event": "message_sent",
+        "id": a_id,
+        "session_id": session_id,
+        "from_agent": target_agent["agent_id"],
+        "to_agent": sender_agent["agent_id"],
+        "type": "answer",
+        "content": answer_text,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    # Resume sender agent
+    conn = get_db()
+    conn.execute("UPDATE agents SET status = 'running' WHERE id = ?", (sender_agent["agent_id"],))
+    conn.commit()
+    conn.close()
+    
+    return text + f"\n\n**Response received from {target_role}:**\n{answer_text}"
+
 # --- WebSocket Event Route ---
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await manager.connect(session_id, websocket)
     try:
         while True:
-            # Just keep the WebSocket connection alive by reading message
             data = await websocket.receive_text()
             logger.info(f"WS received data from client: {data}")
     except WebSocketDisconnect:
