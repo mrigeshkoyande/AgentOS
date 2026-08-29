@@ -16,7 +16,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./spark-prototype
       dockerfile: Dockerfile
     container_name: agentos_frontend
     ports:
