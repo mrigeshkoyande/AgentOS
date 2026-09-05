@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd spark-prototype && npm install && npm run build",
+  "outputDirectory": "spark-prototype/dist/client",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/((?!api|ws).*)" ,
+      "destination": "/index.html"
+    }
+  ]
+}
