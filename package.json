@@ -2,8 +2,18 @@
   "name": "agentos",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "workspaces": [
+    "spark-prototype"
+  ],
   "scripts": {
-    "build": "cd spark-prototype && npm install && npm run build",
-    "dev": "cd spark-prototype && npm run dev"
+    "dev": "npm --prefix spark-prototype run dev",
+    "build": "npm --prefix spark-prototype run build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "5.0.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "vite": "6.4.2"
   }
 }
