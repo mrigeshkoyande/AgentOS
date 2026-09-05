@@ -1,0 +1,9 @@
+{
+  "name": "agentos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd spark-prototype && npm install && npm run build",
+    "dev": "cd spark-prototype && npm run dev"
+  }
+}
