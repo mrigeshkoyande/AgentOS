@@ -1,17 +1,13 @@
-import sqlite3
 import os
 import uuid
 import json
+import sys
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "agentos.db"))
-
-def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+# Ensure backend directory is in path when running standalone/tests
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from database import get_db
 
 def create_tables():
     conn = get_db()
@@ -41,8 +37,8 @@ def create_tables():
         deadline TEXT,
         consensus_threshold REAL DEFAULT 0.7,
         max_rounds INTEGER DEFAULT 5,
-        compromise_allowed BOOLEAN DEFAULT 1,
-        approval_required BOOLEAN DEFAULT 1,
+        compromise_allowed BOOLEAN DEFAULT TRUE,
+        approval_required BOOLEAN DEFAULT TRUE,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         completed_at TEXT,
@@ -59,7 +55,7 @@ def create_tables():
         role TEXT NOT NULL,
         type TEXT,
         weight REAL DEFAULT 1.0,
-        approval_required BOOLEAN DEFAULT 0,
+        approval_required BOOLEAN DEFAULT FALSE,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
     )
