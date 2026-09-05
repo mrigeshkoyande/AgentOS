@@ -62,113 +62,115 @@ app.include_router(analytics_router)
 # Database tables initialization
 def init_db():
     conn = get_db()
-    cursor = conn.cursor()
-    
-    # sessions
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        description TEXT NOT NULL,
-        status TEXT DEFAULT 'draft',
-        user_id TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    # agents
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS agents (
-        id TEXT PRIMARY KEY,
-        session_id TEXT,
-        role TEXT NOT NULL,
-        display_name TEXT,
-        model TEXT NOT NULL,
-        model_override TEXT,
-        system_prompt TEXT,
-        task TEXT,
-        layer INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'pending',
-        output TEXT,
-        cubicle TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        completed_at TEXT,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # messages
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        session_id TEXT,
-        from_agent TEXT,
-        to_agent TEXT,
-        type TEXT,
-        content TEXT,
-        resolved BOOLEAN DEFAULT FALSE,
-        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-        FOREIGN KEY (from_agent) REFERENCES agents(id) ON DELETE CASCADE,
-        FOREIGN KEY (to_agent) REFERENCES agents(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # results
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS results (
-        id TEXT PRIMARY KEY,
-        session_id TEXT,
-        title TEXT,
-        summary TEXT,
-        synthesis TEXT,
-        metrics TEXT, -- JSON array string
-        recommendations TEXT, -- JSON array string
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # agent_registry
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS agent_registry (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        capabilities TEXT NOT NULL, -- JSON list
-        tools TEXT, -- JSON list
-        model TEXT,
-        cubicle TEXT,
-        status TEXT DEFAULT 'IDLE',
-        enabled INTEGER DEFAULT 1,
-        tasks_completed INTEGER DEFAULT 0,
-        tokens_used INTEGER DEFAULT 0,
-        execution_time_sum INTEGER DEFAULT 0
-    )
-    """)
-    
-    # Pre-populate default office agents
-    default_agents = [
-        ("agent-s", "Sammo", "Search Specialist", '["research", "search", "lookup", "source", "external", "extract", "evidence", "find"]', '["retrieval", "source scan", "text extraction"]', 'gemini-1.5-flash', 'S'),
-        ("agent-p", "Paro", "Creative Strategist", '["marketing", "strategy", "campaign", "brand", "business", "creative", "launch", "growth"]', '["brief synthesis", "positioning", "campaign map"]', 'gemini-1.5-flash', 'P'),
-        ("agent-a", "Amo", "Analytics Engineer", '["code", "api", "automation", "debug", "technical", "logic", "build", "backend"]', '["code plan", "debugger", "automation"]', 'gemini-1.5-flash', 'A'),
-        ("agent-r", "Repo", "Content Creator", '["write", "caption", "script", "copy", "story", "communication", "post", "email"]', '["copy draft", "tone pass", "storyline"]', 'gemini-1.5-flash', 'R'),
-        ("agent-k", "Kmailo", "Data Analyst", '["data", "analysis", "pattern", "summary", "compare", "report", "metrics", "insight"]', '["metrics scan", "pattern model", "report builder"]', 'gemini-1.5-flash', 'K')
-    ]
-    for agent in default_agents:
-        cursor.execute(
-            "INSERT OR REPLACE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            agent
-        )
-        
-    # Migrate agents table if missing cubicle column
     try:
-        cursor.execute("ALTER TABLE agents ADD COLUMN cubicle TEXT;")
-    except Exception:
-        pass
+        cursor = conn.cursor()
+        
+        # sessions
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            status TEXT DEFAULT 'draft',
+            user_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # agents
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agents (
+            id TEXT PRIMARY KEY,
+            session_id TEXT,
+            role TEXT NOT NULL,
+            display_name TEXT,
+            model TEXT NOT NULL,
+            model_override TEXT,
+            system_prompt TEXT,
+            task TEXT,
+            layer INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            output TEXT,
+            cubicle TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # messages
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT,
+            from_agent TEXT,
+            to_agent TEXT,
+            type TEXT,
+            content TEXT,
+            resolved BOOLEAN DEFAULT FALSE,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (from_agent) REFERENCES agents(id) ON DELETE CASCADE,
+            FOREIGN KEY (to_agent) REFERENCES agents(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # results
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS results (
+            id TEXT PRIMARY KEY,
+            session_id TEXT,
+            title TEXT,
+            summary TEXT,
+            synthesis TEXT,
+            metrics TEXT, -- JSON array string
+            recommendations TEXT, -- JSON array string
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # agent_registry
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_registry (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            capabilities TEXT NOT NULL, -- JSON list
+            tools TEXT, -- JSON list
+            model TEXT,
+            cubicle TEXT,
+            status TEXT DEFAULT 'IDLE',
+            enabled INTEGER DEFAULT 1,
+            tasks_completed INTEGER DEFAULT 0,
+            tokens_used INTEGER DEFAULT 0,
+            execution_time_sum INTEGER DEFAULT 0
+        )
+        """)
+        
+        # Pre-populate default office agents
+        default_agents = [
+            ("agent-s", "Sammo", "Search Specialist", '["research", "search", "lookup", "source", "external", "extract", "evidence", "find"]', '["retrieval", "source scan", "text extraction"]', 'gemini-1.5-flash', 'S'),
+            ("agent-p", "Paro", "Creative Strategist", '["marketing", "strategy", "campaign", "brand", "business", "creative", "launch", "growth"]', '["brief synthesis", "positioning", "campaign map"]', 'gemini-1.5-flash', 'P'),
+            ("agent-a", "Amo", "Analytics Engineer", '["code", "api", "automation", "debug", "technical", "logic", "build", "backend"]', '["code plan", "debugger", "automation"]', 'gemini-1.5-flash', 'A'),
+            ("agent-r", "Repo", "Content Creator", '["write", "caption", "script", "copy", "story", "communication", "post", "email"]', '["copy draft", "tone pass", "storyline"]', 'gemini-1.5-flash', 'R'),
+            ("agent-k", "Kmailo", "Data Analyst", '["data", "analysis", "pattern", "summary", "compare", "report", "metrics", "insight"]', '["metrics scan", "pattern model", "report builder"]', 'gemini-1.5-flash', 'K')
+        ]
+        for agent in default_agents:
+            cursor.execute(
+                "INSERT OR REPLACE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                agent
+            )
+            
+        # Migrate agents table if missing cubicle column
+        try:
+            cursor.execute("ALTER TABLE agents ADD COLUMN cubicle TEXT;")
+        except Exception:
+            pass
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 # Run database setup
 init_db()

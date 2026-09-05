@@ -11,225 +11,227 @@ from database import get_db
 
 def create_tables():
     conn = get_db()
-    cursor = conn.cursor()
-    
-    # sessions
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        description TEXT NOT NULL,
-        status TEXT DEFAULT 'draft',
-        user_id TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    # decisions
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS decisions (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        status TEXT DEFAULT 'DRAFT',
-        strategy TEXT DEFAULT 'consensus',
-        deadline TEXT,
-        consensus_threshold REAL DEFAULT 0.7,
-        max_rounds INTEGER DEFAULT 5,
-        compromise_allowed BOOLEAN DEFAULT TRUE,
-        approval_required BOOLEAN DEFAULT TRUE,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        completed_at TEXT,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # stakeholders
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS stakeholders (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        type TEXT,
-        weight REAL DEFAULT 1.0,
-        approval_required BOOLEAN DEFAULT FALSE,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # preferences
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS preferences (
-        id TEXT PRIMARY KEY,
-        stakeholder_id TEXT NOT NULL,
-        criterion TEXT NOT NULL,
-        value TEXT NOT NULL,
-        weight REAL DEFAULT 1.0,
-        priority TEXT DEFAULT 'medium',
-        description TEXT,
-        FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # constraints
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS constraints (
-        id TEXT PRIMARY KEY,
-        stakeholder_id TEXT NOT NULL,
-        criterion TEXT NOT NULL,
-        operator TEXT NOT NULL,
-        value TEXT NOT NULL,
-        severity TEXT DEFAULT 'soft',
-        FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # decision_options
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS decision_options (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # conflicts
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS conflicts (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        criterion TEXT NOT NULL,
-        stakeholder_ids TEXT NOT NULL,
-        description TEXT NOT NULL,
-        severity TEXT DEFAULT 'medium',
-        status TEXT DEFAULT 'active',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        resolved_at TEXT,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # negotiation_rounds
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS negotiation_rounds (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        round_number INTEGER NOT NULL,
-        status TEXT DEFAULT 'active',
-        proposal TEXT,
-        counter_proposal TEXT,
-        reason TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        completed_at TEXT,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # decision_votes
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS decision_votes (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        stakeholder_id TEXT NOT NULL,
-        option_id TEXT NOT NULL,
-        score REAL NOT NULL,
-        reason TEXT,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE,
-        FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE,
-        FOREIGN KEY (option_id) REFERENCES decision_options(id) ON DELETE CASCADE
-    )
-    """)
-    
-    # decision_outcomes
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS decision_outcomes (
-        id TEXT PRIMARY KEY,
-        decision_id TEXT NOT NULL,
-        selected_option TEXT NOT NULL,
-        consensus_score REAL NOT NULL,
-        rationale TEXT NOT NULL,
-        tradeoffs TEXT,
-        dissent TEXT,
-        next_actions TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
+    try:
+        cursor = conn.cursor()
+        
+        # sessions
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            status TEXT DEFAULT 'draft',
+            user_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # decisions
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS decisions (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'DRAFT',
+            strategy TEXT DEFAULT 'consensus',
+            deadline TEXT,
+            consensus_threshold REAL DEFAULT 0.7,
+            max_rounds INTEGER DEFAULT 5,
+            compromise_allowed BOOLEAN DEFAULT TRUE,
+            approval_required BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # stakeholders
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stakeholders (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            type TEXT,
+            weight REAL DEFAULT 1.0,
+            approval_required BOOLEAN DEFAULT FALSE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # preferences
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS preferences (
+            id TEXT PRIMARY KEY,
+            stakeholder_id TEXT NOT NULL,
+            criterion TEXT NOT NULL,
+            value TEXT NOT NULL,
+            weight REAL DEFAULT 1.0,
+            priority TEXT DEFAULT 'medium',
+            description TEXT,
+            FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # constraints
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS constraints (
+            id TEXT PRIMARY KEY,
+            stakeholder_id TEXT NOT NULL,
+            criterion TEXT NOT NULL,
+            operator TEXT NOT NULL,
+            value TEXT NOT NULL,
+            severity TEXT DEFAULT 'soft',
+            FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # decision_options
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS decision_options (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # conflicts
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conflicts (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            criterion TEXT NOT NULL,
+            stakeholder_ids TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT DEFAULT 'medium',
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TEXT,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # negotiation_rounds
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS negotiation_rounds (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            round_number INTEGER NOT NULL,
+            status TEXT DEFAULT 'active',
+            proposal TEXT,
+            counter_proposal TEXT,
+            reason TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # decision_votes
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS decision_votes (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            stakeholder_id TEXT NOT NULL,
+            option_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            reason TEXT,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE,
+            FOREIGN KEY (stakeholder_id) REFERENCES stakeholders(id) ON DELETE CASCADE,
+            FOREIGN KEY (option_id) REFERENCES decision_options(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # decision_outcomes
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS decision_outcomes (
+            id TEXT PRIMARY KEY,
+            decision_id TEXT NOT NULL,
+            selected_option TEXT NOT NULL,
+            consensus_score REAL NOT NULL,
+            rationale TEXT NOT NULL,
+            tradeoffs TEXT,
+            dissent TEXT,
+            next_actions TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
 
-    # agent_registry
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS agent_registry (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        capabilities TEXT NOT NULL, -- JSON list
-        tools TEXT, -- JSON list
-        model TEXT,
-        cubicle TEXT,
-        status TEXT DEFAULT 'IDLE',
-        enabled INTEGER DEFAULT 1,
-        tasks_completed INTEGER DEFAULT 0,
-        tokens_used INTEGER DEFAULT 0,
-        execution_time_sum INTEGER DEFAULT 0
-    )
-    """)
+        # agent_registry
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_registry (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            capabilities TEXT NOT NULL, -- JSON list
+            tools TEXT, -- JSON list
+            model TEXT,
+            cubicle TEXT,
+            status TEXT DEFAULT 'IDLE',
+            enabled INTEGER DEFAULT 1,
+            tasks_completed INTEGER DEFAULT 0,
+            tokens_used INTEGER DEFAULT 0,
+            execution_time_sum INTEGER DEFAULT 0
+        )
+        """)
 
-    # tasks
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS tasks (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL,
-        prompt TEXT NOT NULL,
-        status TEXT DEFAULT 'RECEIVED',
-        selected_agent_id TEXT,
-        match_score REAL,
-        reason TEXT,
-        skipped_agents TEXT, -- JSON list
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        completed_at TEXT,
-        execution_time_ms INTEGER,
-        result TEXT,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-        FOREIGN KEY (selected_agent_id) REFERENCES agent_registry(id) ON DELETE SET NULL
-    )
-    """)
+        # tasks
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            status TEXT DEFAULT 'RECEIVED',
+            selected_agent_id TEXT,
+            match_score REAL,
+            reason TEXT,
+            skipped_agents TEXT, -- JSON list
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            execution_time_ms INTEGER,
+            result TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (selected_agent_id) REFERENCES agent_registry(id) ON DELETE SET NULL
+        )
+        """)
 
-    # task_events
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS task_events (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
-        event_type TEXT NOT NULL,
-        payload TEXT, -- JSON object
-        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    )
-    """)
+        # task_events
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS task_events (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT, -- JSON object
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+        """)
 
-    # token_usage
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS token_usage (
-        id TEXT PRIMARY KEY,
-        task_id TEXT,
-        decision_id TEXT,
-        prompt_tokens INTEGER DEFAULT 0,
-        completion_tokens INTEGER DEFAULT 0,
-        total_tokens INTEGER DEFAULT 0,
-        savings_tokens INTEGER DEFAULT 0,
-        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-        FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
-    )
-    """)
-    
-    conn.commit()
-    conn.close()
+        # token_usage
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS token_usage (
+            id TEXT PRIMARY KEY,
+            task_id TEXT,
+            decision_id TEXT,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            savings_tokens INTEGER DEFAULT 0,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id) ON DELETE CASCADE
+        )
+        """)
+        
+        conn.commit()
+    finally:
+        conn.close()
 
 class DecisionRepository:
     def __init__(self):
