@@ -2,7 +2,6 @@ import os
 import re
 import json
 import uuid
-import sqlite3
 import asyncio
 import logging
 import requests
@@ -24,8 +23,10 @@ try:
 except ImportError:
     pass
 
-# Database File Path
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "agentos.db"))
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from database import get_db
 
 # Models for Request Bodies
 class SessionCreate(BaseModel):
@@ -56,12 +57,7 @@ app.include_router(decisions_router)
 app.include_router(tasks_router)
 app.include_router(analytics_router)
 
-# Helper to get DB connection
-def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+# get_db imported from database module
 
 # Database tables initialization
 def init_db():
@@ -110,7 +106,7 @@ def init_db():
         to_agent TEXT,
         type TEXT,
         content TEXT,
-        resolved BOOLEAN DEFAULT 0,
+        resolved BOOLEAN DEFAULT FALSE,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
         FOREIGN KEY (from_agent) REFERENCES agents(id) ON DELETE CASCADE,
@@ -164,7 +160,13 @@ def init_db():
             "INSERT OR REPLACE INTO agent_registry (id, name, role, capabilities, tools, model, cubicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
             agent
         )
-    
+        
+    # Migrate agents table if missing cubicle column
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN cubicle TEXT;")
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -584,63 +586,64 @@ def list_sessions():
     conn.close()
     return sessions
 
-# Create Session
 @app.post("/api/sessions")
 def create_session(payload: SessionCreate):
     session_id = f"sess_{uuid.uuid4().hex[:10]}"
     conn = get_db()
-    cursor = conn.cursor()
-    
-    # Insert session
-    cursor.execute(
-        "INSERT INTO sessions (id, description, status) VALUES (?, ?, ?)",
-        (session_id, payload.description, "draft")
-    )
-    
-    # Generate agents
-    agents_data = generate_agents_for_description(payload.description)
-    agents_list = []
-    
-    cubicles = ['S', 'P', 'A', 'R', 'K']
-    for idx, a in enumerate(agents_data):
-        agent_id = f"agent_{uuid.uuid4().hex[:10]}"
-        cubicle = a.get("cubicle", cubicles[idx % len(cubicles)])
-        cursor.execute(
-            """INSERT INTO agents 
-               (id, session_id, role, display_name, model, system_prompt, task, layer, status, cubicle) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                agent_id,
-                session_id,
-                a["role"],
-                a.get("display_name", a["role"]),
-                a["model"],
-                a.get("system_prompt", ""),
-                a.get("task", ""),
-                a.get("layer", 0),
-                "pending",
-                cubicle
-            )
-        )
-        agents_list.append({
-            "agent_id": agent_id,
-            "role": a["role"],
-            "display_name": a.get("display_name", a["role"]),
-            "model": a["model"],
-            "layer": a.get("layer", 0),
-            "status": "pending",
-            "task": a.get("task", ""),
-            "cubicle": cubicle
-        })
+    try:
+        cursor = conn.cursor()
         
-    conn.commit()
-    conn.close()
-    
-    return {
-        "session_id": session_id,
-        "status": "draft",
-        "agents": agents_list
-    }
+        # Insert session
+        cursor.execute(
+            "INSERT INTO sessions (id, description, status) VALUES (?, ?, ?)",
+            (session_id, payload.description, "draft")
+        )
+        
+        # Generate agents
+        agents_data = generate_agents_for_description(payload.description)
+        agents_list = []
+        
+        cubicles = ['S', 'P', 'A', 'R', 'K']
+        for idx, a in enumerate(agents_data):
+            agent_id = f"agent_{uuid.uuid4().hex[:10]}"
+            cubicle = a.get("cubicle", cubicles[idx % len(cubicles)])
+            cursor.execute(
+                """INSERT INTO agents 
+                   (id, session_id, role, display_name, model, system_prompt, task, layer, status, cubicle) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    session_id,
+                    a["role"],
+                    a.get("display_name", a["role"]),
+                    a["model"],
+                    a.get("system_prompt", ""),
+                    a.get("task", ""),
+                    a.get("layer", 0),
+                    "pending",
+                    cubicle
+                )
+            )
+            agents_list.append({
+                "agent_id": agent_id,
+                "role": a["role"],
+                "display_name": a.get("display_name", a["role"]),
+                "model": a["model"],
+                "layer": a.get("layer", 0),
+                "status": "pending",
+                "task": a.get("task", ""),
+                "cubicle": cubicle
+            })
+            
+        conn.commit()
+        return {
+            "session_id": session_id,
+            "status": "draft",
+            "agents": agents_list
+        }
+    finally:
+        conn.close()
+
 
 # Get Session Details
 @app.get("/api/sessions/{session_id}")
@@ -1134,4 +1137,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="localhost", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "127.0.0.1")
+    uvicorn.run("main:app", host=host, port=port, reload=False)
+
